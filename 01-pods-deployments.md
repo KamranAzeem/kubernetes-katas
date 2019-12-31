@@ -104,7 +104,7 @@ The contents of `nginx-simple-deployment.yaml` are as follows:
 ```
 $ cat nginx-simple-deployment.yaml
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
