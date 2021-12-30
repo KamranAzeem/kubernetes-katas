@@ -61,9 +61,10 @@ You may encounter the same limitations, if you are running a cluster of your own
 * [09-ingress-traefik.md](09-ingress-traefik.md)
 * [10-healthchecks.md](10-healthchecks.md)
 * [11-helm-package-manager.md](11-helm-package-manager.md)
+* [12-metallb-load-balancer.md](12-metallb-load-balancer.md)
+
 * [90-secrets-ssl-certs-in-nginx.md](90-secrets-ssl-certs-in-nginx.md)
 * [99-setup-kubectl-generic.md](99-setup-kubectl-generic.md)
-
 * [Setup your own cluster with kubeadm](beyond-this-course-setting-up-your-own.md)
 * [Spinup a Sock-Shop application with Grafana and Prometheus monitoring](sock-shop/README.md)
 
