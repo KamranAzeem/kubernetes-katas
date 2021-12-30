@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-secrets-demo
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      name: k8s-secrets-demo
+
+  template:
+    metadata:
+      labels:
+        name: k8s-secrets-demo
+    spec:
+      containers:
+      - name: secrets-demo-app
+        image: wbitt/k8s-secrets-demo-app
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-url
+              key: API_URL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-key
+              key: API_KEY

@@ -1,211 +1,443 @@
 # Kubernetes secrets and Config maps
 
-This exercise is targeted towards both developers and system administrators. Most of the time developers are interested in passing certain types of secrets to the containers, such as usernames, passwords, API keys, etc. Similarly most of the time system administrators are interested in passing configuration files, keys, certificate files, etc to the containers. So this excercise has something for both situations.
+This exercise is targeted towards both developers and system administrators. Most of the time developers are interested in passing certain types of secrets to the containers, such as usernames, passwords, API keys, etc. Similarly most of the time system administrators are interested in passing configuration files, keys, certificate files, etc to the containers. So this exercise has something for both situations.
 
 
 ## A simple .js application:
-Our [maginificent app](./secrets/secretapp.js) requries an API key and a value for the variable `LANGUAGE`. Here is what our application looks like initially:
+Our [secrets demo app](support-files/secrets-demo-app/secrets-demo-app.js) requires values for `API URL` and `API_Key` variables. Here is what our application looks like initially:
 
 ```
-$ cat secrets/secretapp.js 
+$ cat support-files/secrets-demo-app/secrets-demo-app.js 
 var http = require('http');
 var server = http.createServer(function (request, response) {
-  const LANGUAGE = 'English';
+  const API_URL = 'https://api.example.com';
   const API_KEY = 'abc-123-456-789-xyz';
-  response.write(`Language: ${LANGUAGE}\n`);
-  response.write(`API Key: ${API_KEY}\n`);
+  response.write(`Found API URL: ${API_URL}\n`);
+  response.write(`Found API Key: ${API_KEY}\n`);
+  response.write(`Proceeding to run the application ... \n`);
   response.end(`\n`);
 });
 server.listen(3000);
 ```
 
-Notice, we have hard-coded the values for API_KEY and LANGUAGE:
+Notice, we have hard-coded the values for `API_URL` and `API_KEY` :
 
 ```
-  const LANGUAGE = 'English';
-  const API_KEY = 'abc-123-456-789-xyz';
+const API_URL = 'https://api.example.com';
+const API_KEY = 'abc-123-456-789-xyz';
 ```
 
-Rather than hardcode this sensitive information and commit it to git repository for all the world to see, we should source these values from environment variables. 
+Run the app on a plain docker host, using `docker run`:
 
-The first step to fixing it, would be to make sure that our variables get their values from the process's environment. So, we change the code like this:
+```
+$ cd support-files/secrets-demo-app
 
-```shell
-  const LANGUAGE = process.env.LANGUAGE;
+$ docker build . -t local/secrets-demo-app
+
+$ docker run -p 3000:3000 -d local/secrets-demo-app
+
+$ curl localhost:3000
+Found API URL: https://api.example.com
+Found API Key: abc-123-456-789-xyz
+Proceeding to run the application ... 
+
+```
+
+In the example above, the two variables are hard-coded into the application. At least one of these (`API_KEY`) is a sensitive variable. If we keep this code like this, the sensitive information will be saved into the file, and eventually reach the git repository, and after that it is visible to the entire world - if the repo is public. Even if the repo is not public, the code will be part of git history forever, and anyone having access to the git repo can extract this sensitive information from the git commit history. 
+
+It is not only the sensitivity of the variables that makes this a bad piece of code. The `API_URL` variable is not sensitive in nature. However, if the URL changes in future, then we would need to modify the code; and, if it is container image, we would need to rebuild the container image; and, .... You get the point.
+
+
+So a better way is to set these as *Environment Variables* and let the application load these from the process's environment, which it gets from the underlying OS. 
+
+The first step to fixing it, would be to make sure that our variables get their values from the process's environment. So, we change the application code like this:
+
+```
+  const API_URL = process.env.API_URL;
   const API_KEY = process.env.API_KEY;
 ```
 
-Lets create a Docker container for this app and pass these values as environment variables in the container:
+Lets create a Docker container for this app and pass these values as environment variables in the Dockerfile:
 
-```shell
-$ cat secrets/Dockerfile
+```
+$ cat support-files/secrets-demo-app/Dockerfile
 
-FROM node:9.1.0-alpine
+FROM node:alpine
 EXPOSE 3000
-ENV LANGUAGE English
+ENV API_URL https://api.example.com
 ENV API_KEY abc-123-456-789-xyz
-COPY secretapp.js .
-ENTRYPOINT node secretapp.js
+COPY secrets-demo-app.js .
+ENTRYPOINT ["node", "secrets-demo-app.js"]
 ```
 
-Lets run this Docker container image as a pod in our Kubernetes cluster. (This container image is available as `praqma/secrets-demo`). We can run that in our Kubernetes cluster by using the [the deployment file](secrets/deployment.yml). Here is what the deployment file looks like:
+Run the app on a plain docker host, using `docker run`:
 
 ```
-$ cat secrets/deployment.yml 
-apiVersion: extensions/v1beta1
+$ cd support-files/secrets-demo-app
+
+$ docker build . -t local/secrets-demo-app
+
+$ docker run -p 3000:3000 -d local/secrets-demo-app
+
+$ curl localhost:3000
+Found API URL: https://api.example.com
+Found API Key: abc-123-456-789-xyz
+Proceeding to run the application ... 
+
+```
+
+OK, the application still works as expected. We have containerized the app, but we have moved the problem from one file to another. Now the values of these variables are stored in the  `Dockerfile` which is still part of the application code, and will be stored in the git repository. 
+
+So now, the best way is to pass these variables from OS environment. For that we remove the two `ENV` lines from `Dockerfile`, so it looks like this:
+
+```
+$ cat support-files/secrets-demo-app/Dockerfile
+
+FROM node:alpine
+EXPOSE 3000
+COPY secrets-demo-app.js .
+ENTRYPOINT ["node", "secrets-demo-app.js"]
+``
+
+Kill the previous running container, build a new one and then start it.
+
+```
+$ docker kill 8cb3fce946a1
+
+$ docker build . -t local/secrets-demo-app
+
+$ docker run \
+    -e API_URL=https://api.example.com \
+    -e API_KEY=def-123-456-789-uvw  \
+    -p 3000:3000 \
+    -d local/secrets-demo-app
+
+
+$ curl localhost:3000
+Found API URL: https://api.example.com
+Found API Key: def-123-456-789-uvw
+Proceeding to run the application ... 
+
+```
+
+## Run the app as a deployment in Kubernetes:
+
+The Docker container for the application shown above is available as `wbitt/k8s-secrets-demo-app` - from DockerHub.
+
+Lets run this Docker container image as a deployment in our Kubernetes cluster. We can run that in our Kubernetes cluster by using the [the basic deployment file](support-files/secrets-demo-app/basic-deployment.yml). Here is what the deployment file looks like:
+
+```
+$ cat support-files/secrets-demo-app/basic-deployment.yml 
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: envtest
+  name: k8s-secrets-demo
 spec:
   replicas: 1
+
+  selector:
+    matchLabels:
+      name: k8s-secrets-demo
+
   template:
     metadata:
       labels:
-        name: envtest
+        name: k8s-secrets-demo
     spec:
       containers:
-      - name: envtest
-        image: praqma/secrets-demo
+      - name: secrets-demo-app
+        image: wbitt/k8s-secrets-demo-app
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
         env:
-        - name: LANGUAGE
-          value: Polish
+        - name: API_URL
+          value: https://api.example.com
         - name: API_KEY
           value: def-333-444-555-jkl
+
 ```
 
-Notice the env values added at the bottom of the deployment file. Create/run the deployment:
+Notice the ENV variables and their values are part of the `deployment.yaml` file, which is the problem we are trying to avoid, but, we will get there. Lets run it:
 
-```shell
-$ kubectl apply -f secrets/deployment.yml
-deployment.extensions/envtest created
+```
+$ kubectl apply -f support-files/secrets-demo-app/basic-deployment.yml
+deployment.apps/k8s-secrets-demo created
 ```
 
 Expose the deployment on a nodeport. Remember that this application runs on port `3000`.
 
 ```
 $ kubectl get deployments
-NAME        DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-envtest     1         1         1            0           14s
-multitool   1         1         1            1           2h
-nginx       4         4         4            4           2h
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+k8s-secrets-demo   1/1     1            1           87s
+multitool          1/1     1            1           42d
 
-$ kubectl expose deployment envtest --type=NodePort
-service/envtest exposed
+
+$ kubectl expose deployment k8s-secrets-demo --type=NodePort
+service/k8s-secrets-demo exposed
 
 $ kubectl get services
-NAME      TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)          AGE
-envtest   NodePort       10.59.252.33    <none>          3000:30771/TCP   9s
-nginx     LoadBalancer   10.59.240.197   146.148.21.83   80:32423/TCP     1h
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+k8s-secrets-demo   NodePort    10.111.187.198   <none>        3000:30848/TCP   28s
+kubernetes         ClusterIP   10.96.0.1        <none>        443/TCP          42d
 ```
 
-Now, notice that despite the default value in the Dockerfile, it should now be overwritten by the values of environment variables in deployment  file! Though the problem still is, that we moved the hard coded values from our application code to the deployment file. The deployment file will of-course be part of the related git repository, and these variables and their values will be visible to anyone. We need to find a better way of passing the variables to the application/pod.
+Lets access this service and see what we get:
 
-### Secrets using the kubernetes secret resource
-
-Let's create the API key as a kubernetes **secret**:
-
-```shell
-$ kubectl create secret generic apikey --from-literal=API_KEY=def-333-444-555-jkl
-secret/apikey created
+```
+$ curl 192.168.50.67:30848
+Found API URL: https://api.example.com
+Found API Key: def-333-444-555-jkl
+Proceeding to run the application ... 
 ```
 
-Kubernetes supports different kinds of preconfigured secrets, but for now we'll deal with a generic one.
+Good. It is working. Next we will pass sensitive environment variables through Kubernetes "secrets", and non-sensitive variables as "configmap".
 
-Similarly create `language` as kubernetes **configmap**:
+### kubernetes secrets and configmaps:
 
-```shell
-$ kubectl create configmap language --from-literal=LANGUAGE=German
-configmap/language created
+Let's create the API key as a kubernetes **secret**. Kubernetes supports different kinds of pre-configured secrets, but for now we'll use the `generic` type.
+
+
+```
+$ kubectl create secret generic api-key --from-literal=API_KEY=ghi-123-444-555-mno
+secret/api-key created
 ```
 
-Now run `kubectl get secets` and `kubectl get configmap` to see if these objects are created:
 
-```shell
-$ kubectl get secrets
-NAME                  TYPE                                  DATA      AGE
-apikey                Opaque                                1         4m
-default-token-td78d   kubernetes.io/service-account-token   3         3h
+Since the value stored in API_URL variable is not necessarily sensitive information, it can be created as **configmap** object:
+
+```
+$ kubectl create configmap api-url --from-literal=API_URL=https://api.example.com
+configmap/api-url created
 ```
 
-```shell
-$ kubectl get configmaps
-NAME       DATA      AGE
-language   1         2m
+**Note:** Kubernetes does not allow underscore in the names of the objects it creates. Only lowercase letters (a-z), numbers (0-9) and hyphen (-) are allowed.
+
+Now run `kubectl get secrets,configmap` to see if these objects are created:
+
+```
+$ kubectl get secrets,configmaps
+NAME                         TYPE                                  DATA   AGE
+secret/api-key               Opaque                                1      6m59s
+secret/default-token-7rn6k   kubernetes.io/service-account-token   3      42d
+
+NAME                         DATA   AGE
+configmap/api-url            1      80s
+configmap/kube-root-ca.crt   1      42d
+
 ```
 
-> Try to investigate the secret by using the kubectl describe command:
-> ```shell
-> $ kubectl describe secret apikey
-> ```
-> Note that the actual value of API_KEY is not shown. To see the encoded value use:
-> ```shell
-> $ kubectl get secret apikey -o yaml
-> ```
+Now, investigate the secret by using the kubectl describe command. You will notice that the actual value of API_KEY is not shown.
+```
+$ kubectl describe secret api-key
+Name:         api-key
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
 
-Last step is to change the Kubernetes deployment (secrets/deployment.yml) file to use the secrets.
+Type:  Opaque
 
-Change this:
+Data
+====
+API_KEY:  19 bytes
+```
 
-```shell
+To see the contents of the API_KEY variable in this secret, use the following command. You will notice, that the value is not what you specified when you created this secret. It is different because it is encoded with base64.
+
+```
+$ kubectl get secret api-key -o yaml
+apiVersion: v1
+data:
+  API_KEY: Z2hpLTEyMy00NDQtNTU1LW1ubw==
+kind: Secret
+metadata:
+  creationTimestamp: "2021-12-30T13:17:17Z"
+  name: api-key
+  namespace: default
+  resourceVersion: "227176"
+  uid: dea7643e-3578-4ac2-ac88-e7ebc5f0ac0f
+type: Opaque
+```
+
+To extract the actual decoded value of the API_KEY, copy the encoded string and pass it through `base64 -d`, and you will see the actual value which you provided to this variable when you created this secret.
+
+```
+$ echo Z2hpLTEyMy00NDQtNTU1LW1ubw== | base64 -d
+
+ghi-123-444-555-mno
+```
+
+If you examine the configMap api-url, you will see the value of this variable directly in the output.
+
+```
+$ kubectl describe configmap api-url
+Name:         api-url
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+API_URL:
+----
+https://api.example.com
+
+BinaryData
+====
+
+Events:  <none>
+```
+
+Another way to view the contents of config map is to use `kubectl get ... -o yaml`:
+
+```
+$ kubectl get configmap api-url -o yaml
+apiVersion: v1
+data:
+  API_URL: https://api.example.com
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2021-12-30T13:22:56Z"
+  name: api-url
+  namespace: default
+  resourceVersion: "227413"
+  uid: ce97b8b2-9c14-4f48-acee-dbc0ea9ff896
+```
+
+## Update the deployment to use secret and configmap:
+
+Now we change the Kubernetes deployment file to use the secrets. For this exercise , a separate  file is created as `support-files/secrets-demo-app/final-deployment.yml`.
+
+Change the env section, from:
+
+```
         env:
-        - name: LANGUAGE
-          value: Polish
+        - name: API_URL
+          value: https://api.example.com
         - name: API_KEY
           value: def-333-444-555-jkl
 ```
 
-To this:
+to this:
 
-```shell
+```
         env:
-        - name: LANGUAGE
+
+        - name: API_URL
           valueFrom:
             configMapKeyRef:
-              name: language
-              key: LANGUAGE
+              name: api-url
+              key: API_URL
+
         - name: API_KEY
           valueFrom:
             secretKeyRef:
-              name: apikey
+              name: api-key
               key: API_KEY
 ```
 
-After you have edited the `deployment.yml` file (or you can use the prepared one `secrets/final.deployment.yml`), you need to apply the new version of the file by using: `kubectl apply -f deployment.yml` .
+After you have edited the older deployment file (or used the already prepared one `support-files/secrets-demo-app/final-deployment.yml`), you need to apply the new version of the file by using: 
 
-You should now see the variables being loaded from configmap and secret respectively.
+```
+$ kubectl apply -f support-files/secrets-demo-app/final-deployment.yml
+```
 
-#### What happens when secrets and configmaps change?
+Access the application again over nodeport, using curl and see if you get the correct output. You should now see the variables being loaded from configmap and secret respectively.
+
+```
+$ curl 192.168.50.67:30848
+Found API URL: https://api.example.com
+Found API Key: ghi-123-444-555-mno
+Proceeding to run the application ... 
+```
+
+#### What happens when the values of variables inside secrets and configmaps change?
 Pods are not recreated automatically when serets or configmaps change. After you change the secrets and config maps values, you need to restart the pods which are using those secrets and config maps. 
 
-Here is an example of changing/updating an existing secret and config map:
-```shell
-$ kubectl create configmap language --from-literal=LANGUAGE=German -o yaml --dry-run | kubectl replace -f -
-configmap/language replaced
-
-$ kubectl create secret generic apikey --from-literal=API_KEY=klm-333-444-555-pqr -o yaml --dry-run | kubectl replace -f -
-secret/apikey replaced
-```
-
-Then delete the pod (so it's recreated with the replaced configmap and secret) :
-
-```shell
-$ kubectl delete pod envtest-3380598928-kgj9d
-pod "envtest-3380598928-kgj9d" deleted
-```
-
-Access it in a web browser again, to see the updated values. You need the (external) IP of any of the worker nodes to reach this service over NodePort.
+You can simply delete the configmap and secret and create a new one,using the following command, or use the fancy command shown next.
 
 ```
-$ kubectl get nodes -o wide
-NAME                                                  STATUS   ROLES    AGE   VERSION          INTERNAL-IP   EXTERNAL-IP     OS-IMAGE                             KERNEL-VERSION   CONTAINER-RUNTIME
-gke-ndc-oslo-training-cl-default-pool-654cdad8-5gpf   Ready    <none>   4h    v1.11.7-gke.12   10.123.0.8    104.155.27.73   Container-Optimized OS from Google   4.14.91+         docker://17.3.2
-gke-ndc-oslo-training-cl-default-pool-654cdad8-g1qf   Ready    <none>   4h    v1.11.7-gke.12   10.123.0.7    35.233.51.246   Container-Optimized OS from Google   4.14.91+         docker://17.3.2
-gke-ndc-oslo-training-cl-default-pool-654cdad8-r09t   Ready    <none>   4h    v1.11.7-gke.12   10.123.0.6    35.240.117.25   Container-Optimized OS from Google   4.14.91+         docker://17.3.2 
+$ kubectl delete configmap api-url
+
+$ kubectl delete secret api-key
 ```
 
+Here is the fancy way of changing/updating an existing secret and config map:
+
+```
+$ kubectl create configmap api-url --from-literal=API_URL=https://api.example.net -o yaml --dry-run=client | kubectl replace -f -
+
+configmap/api-url replaced
+
+$ kubectl create secret generic api-key --from-literal=API_KEY=klm-333-444-555-pqr -o yaml --dry-run=client | kubectl replace -f -
+
+secret/api-key replaced
+```
+
+Then delete the existing pod, so it's recreated with the new/updated configmap and secret:
+
+```
+$ kubectl delete pod k8s-secrets-demo-6d579d7d9-w99wg
+pod "k8s-secrets-demo-6d579d7d9-w99wg" deleted
+```
+
+Once new instance of the pod is running, access it using curl again to see the updated values.
+
+```
+$ curl 192.168.50.67:30848
+Found API URL: https://api.example.net
+Found API Key: klm-333-444-555-pqr
+Proceeding to run the application ... 
+```
+
+## Multiple environment variables in a single secret:
+If you want, you can store multiple variables and their values in a single secret. In this example, we can store both API_URL and API_KEY in a single kubernetes secret. Since both variables will be stored in a secret, we don't need to create a separate configmap for API_URL.
+
+We create it like this:
+
+```
+$ kubectl create secret generic demo-app-credentials \
+    --from-literal=API_KEY=ghi-123-444-555-mno \
+    --from-literal=API_URL=https://api.example.com
+```
+
+Then replace the `env` section of the deployment:
+
+```
+        env:
+        - name: API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: api-url
+              key: API_URL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-key
+              key: API_KEY
+```
+
+with this:
+
+```
+        env:
+        - name: API_URL
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-credentials
+              key: API_URL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-credentials
+              key: API_KEY
+```
+
+
+------
+
+You can also try to setup a simple wordpress container to experiment with secrets.
 
 ----------
 
@@ -290,7 +522,7 @@ Create a nginx deployment with SSL support using the secret and config map you c
 
 ```
 $ cat support-files/nginx-ssl.yaml 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
