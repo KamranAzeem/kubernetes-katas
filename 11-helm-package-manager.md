@@ -386,6 +386,116 @@ As mentioned in the begnning of this page, the **charts** describe which values 
 
 Praqma has created [Helmsman](https://github.com/Praqma/Helmsman), which is another layer of abstraction on top of Helm. Helmsman allows you to deploy helm charts through CI/CD pipelines.
 
+------
+
+## Upgrade helm deployment/release with newer values:
+
+This example uses Grafana helm chart to explain the process.
+
+```
+$ helm list --all-namespaces=true
+NAME           	NAMESPACE  	REVISION	UPDATED                                 	STATUS  	CHART                                 	APP VERSION
+grafana        	monitoring 	1       	2021-10-29 14:39:05.075408876 +0200 CEST	deployed	grafana-6.17.4                        	8.2.2      
+metallb        	metallb    	1       	2021-10-29 12:27:45.334746266 +0200 CEST	deployed	metallb-0.10.3                        	v0.10.3    
+metrics-server 	kube-system	1       	2021-11-02 15:02:30.008464292 +0100 CET 	deployed	metrics-server-3.6.0                  	0.5.1      
+nfs-provisioner	kube-system	1       	2021-10-29 13:09:25.582376957 +0200 CEST	deployed	nfs-subdir-external-provisioner-4.0.14	4.0.2      
+prometheus     	monitoring 	1       	2021-10-29 14:20:18.884286303 +0200 CEST	deployed	prometheus-14.11.0                    	2.26.0     
+
+```
+
+
+Lets change grafana service from ClusterIP to LoadBalancer.
+```
+$ kubectl get svc --namespace=monitoring
+NAME                            TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+grafana                         ClusterIP   10.32.18.12     <none>        80/TCP     10d
+prometheus-alertmanager         ClusterIP   10.32.59.146    <none>        80/TCP     10d
+prometheus-kube-state-metrics   ClusterIP   10.32.155.249   <none>        8080/TCP   10d
+prometheus-node-exporter        ClusterIP   None            <none>        9100/TCP   10d
+prometheus-pushgateway          ClusterIP   10.32.126.228   <none>        9091/TCP   10d
+prometheus-server               ClusterIP   10.32.101.168   <none>        80/TCP     10d
+[kamran@kworkhorse kubernetes-katas]$ 
+```
+
+Edit the support-files/grafana.yaml file, and change type to loadBalancer:
+
+```
+$ vi support-files/grafana_values.yaml 
+
+. . . 
+
+service:
+  enabled: true
+  #type: ClusterIP
+  type: LoadBalancer
+  
+. . . 
+```
+
+
+
+Apply the changes:
+
+```
+$ helm upgrade  -f support-files/grafana_values.yaml grafana  grafana/grafana --namespace=monitoring
+
+Release "grafana" has been upgraded. Happy Helming!
+NAME: grafana
+LAST DEPLOYED: Mon Nov  8 13:52:49 2021
+NAMESPACE: monitoring
+STATUS: deployed
+REVISION: 2
+NOTES:
+1. Get your 'admin' user password by running:
+
+   kubectl get secret --namespace monitoring grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+
+2. The Grafana server can be accessed via port 80 on the following DNS name from within your cluster:
+
+   grafana.monitoring.svc.cluster.local
+
+   Get the Grafana URL to visit by running these commands in the same shell:
+NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status of by running 'kubectl get svc --namespace monitoring -w grafana'
+     export SERVICE_IP=$(kubectl get svc --namespace monitoring grafana -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+     http://$SERVICE_IP:80
+
+3. Login with the password from step 1 and the username: admin
+#################################################################################
+######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+######            the Grafana pod is terminated.                            #####
+#################################################################################
+[kamran@kworkhorse kubernetes-katas]$ 
+
+```
+
+
+Before this change, grafana chart was on REVISION 1. Now, after this change,you can see that grafana chart is on REVISION 2.
+
+```
+$ helm list --all-namespaces=true
+NAME           	NAMESPACE  	REVISION	UPDATED                                 	STATUS  	CHART                                 	APP VERSION
+grafana        	monitoring 	2       	2021-11-08 13:52:49.837163993 +0100 CET 	deployed	grafana-6.17.4                        	8.2.2      
+metallb        	metallb    	1       	2021-10-29 12:27:45.334746266 +0200 CEST	deployed	metallb-0.10.3                        	v0.10.3    
+metrics-server 	kube-system	1       	2021-11-02 15:02:30.008464292 +0100 CET 	deployed	metrics-server-3.6.0                  	0.5.1      
+nfs-provisioner	kube-system	1       	2021-10-29 13:09:25.582376957 +0200 CEST	deployed	nfs-subdir-external-provisioner-4.0.14	4.0.2      
+prometheus     	monitoring 	1       	2021-10-29 14:20:18.884286303 +0200 CEST	deployed	prometheus-14.11.0                    	2.26.0     
+
+```
+
+
+```
+$ kubectl get svc --namespace=monitoring
+NAME                            TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)        AGE
+grafana                         LoadBalancer   10.32.18.12     10.240.0.100   80:30084/TCP   10d
+prometheus-alertmanager         ClusterIP      10.32.59.146    <none>         80/TCP         10d
+prometheus-kube-state-metrics   ClusterIP      10.32.155.249   <none>         8080/TCP       10d
+prometheus-node-exporter        ClusterIP      None            <none>         9100/TCP       10d
+prometheus-pushgateway          ClusterIP      10.32.126.228   <none>         9091/TCP       10d
+prometheus-server               ClusterIP      10.32.101.168   <none>         80/TCP         10d
+```
+
+
 # Further reading:
 * [Helm quick start guide](https://helm.sh/docs/using_helm/#quickstart)
 * [Securing your helm installation](https://helm.sh/docs/using_helm/#securing-your-helm-installation)
