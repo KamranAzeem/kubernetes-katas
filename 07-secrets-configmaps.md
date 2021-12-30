@@ -97,7 +97,7 @@ FROM node:alpine
 EXPOSE 3000
 COPY secrets-demo-app.js .
 ENTRYPOINT ["node", "secrets-demo-app.js"]
-``
+```
 
 Kill the previous running container, build a new one and then start it.
 
