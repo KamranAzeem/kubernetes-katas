@@ -1,4 +1,4 @@
-# Kubernetes secrets and Config maps
+# Kubernetes environmenet variables, Secrets and Config-maps:
 
 This exercise is targeted towards both developers and system administrators. Most of the time developers are interested in passing certain types of secrets to the containers, such as usernames, passwords, API keys, etc. Similarly most of the time system administrators are interested in passing configuration files, keys, certificate files, etc to the containers. So this exercise has something for both situations.
 
@@ -434,10 +434,54 @@ with this:
               key: API_KEY
 ```
 
+You can examine the secret using the same tools as before. This time you see that there are two items in one secret.
+
+```
+
+[$ kubectl describe secret demo-app-credentials
+Name:         demo-app-credentials
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+API_KEY:  19 bytes
+API_URL:  23 bytes
+```
+
+```
+$ kubectl get secret demo-app-credentials -o yaml
+apiVersion: v1
+data:
+  API_KEY: Z2hpLTEyMy00NDQtNTU1LW1ubw==
+  API_URL: aHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20=
+kind: Secret
+metadata:
+  creationTimestamp: "2021-12-30T14:00:02Z"
+  name: demo-app-credentials
+  namespace: default
+  resourceVersion: "229034"
+  uid: e6901fe9-51e3-4288-ba8f-51487c0f31af
+type: Opaque
+```
+
+```
+$ echo aHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20= | base64 -d
+
+https://api.example.com
+
+$ echo Z2hpLTEyMy00NDQtNTU1LW1ubw== | base64 -d
+
+ghi-123-444-555-mno
+```
+
 
 ------
 
-You can also try to setup a simple wordpress container to experiment with secrets.
+You can also try to setup a simple wordpress pod/deployment to experiment with secrets.
 
 ----------
 
@@ -450,26 +494,28 @@ This example is more suited for system administrators. In this example, we want 
 To achieve these objectives, we will create SSL certs as secrets, and a custom nginx configuration as configmap, and use them in our deployment.
 
 
-Generate self signed certs: (check support-files/  directory)
+Generate self signed certs:
 ```
-./generate-self-signed-certs.sh
+$ support-files/generate-self-signed-certs.sh
 ```
-This will create `tls.*` files.
+This will create two `tls.*` files in the current directory.
 
 
-Create  (tls type) secret for nginx:
+Create  (tls type) secret for nginx using these two files:
 
 ```
-kubectl create secret tls nginx-certs --cert=tls.crt --key=tls.key
+$ kubectl create secret tls nginx-certs \
+    --cert=tls.crt \
+    --key=tls.key
 ```
 
 Examine the secret you just created:
 ```
-kubectl describe secret nginx-certs
+$ kubectl describe secret nginx-certs
 ```
 
 ```
-kubectl get secret nginx-certs -o yaml
+$ kubectl get secret nginx-certs -o yaml
 ```
 
 
@@ -504,7 +550,8 @@ server {
 
 
 ```
-kubectl create configmap nginx-config --from-file=support-files/nginx-connectors.conf
+$ kubectl create configmap nginx-config \
+    --from-file=support-files/nginx-connectors.conf
 ```
 
 Examine the configmap you just created:
@@ -518,7 +565,7 @@ kubectl get configmap nginx-config -o yaml
 ```
 
 
-Create a nginx deployment with SSL support using the secret and config map you created in the previous steps (above): (check support-files/  directory)
+Create a nginx deployment with SSL support using the secret and config map you created in the previous steps (above):
 
 ```
 $ cat support-files/nginx-ssl.yaml 
@@ -560,10 +607,10 @@ spec:
 
 
 ```
-kubectl create -f nginx-ssl.yaml
+kubectl create -f support-files/nginx-ssl.yaml
 ```
 
-You should be able to see nginx running. Expose it as a service and curl it from your computer. You can also curl it through the multitool pod from within the cluster.
+You should be able to see nginx running. Expose it as a service and `curl` it from your computer. You can also `curl` it through the multitool pod from within the cluster without exposing it as a service.
 
 
 
