@@ -1,3 +1,5 @@
+**Note: This chapter uses old version of Helm which depended on Tiller. Newer versions of Helm do not need Tiller. Therefore, this chapter should be considered expired.**
+
 # The Kubernetes package manager - Helm
 
 So far you have learned the following:
