@@ -1,4 +1,4 @@
-I find it appropriate to introduce multiple containers earlier in this course, so the students can really grasp the idea of having multiple containers in a single pod early on. This will help distinguide kubernetes from docker right from the beginning.
+I find it appropriate to introduce multiple containers earlier in this course, so the students can really grasp the idea of having multiple containers in a single pod early on. This will help distinguish kubernetes from docker right from the beginning.
 
 # Init containers:
 At times you may want to do some prep work for a container before starting it. That pre-work could be done by another container, which would do it's thing and exit before the main container starts. One example could be that you want to serve some static website content which exists as a git hub repository. So you would want something to pull that static content and provide it to the web server. This is called init-container. 
@@ -13,14 +13,6 @@ kind: Pod
 metadata:
   name: init-container-demo
 spec:
-  containers:
-  - name: nginx
-    image: nginx:alpine
-    ports:
-    - containerPort: 80
-    volumeMounts:
-    - name: web-content-dir
-      mountPath: /usr/share/nginx/html
   initContainers:
   - name: helper
     image: alpine/git
@@ -32,6 +24,14 @@ spec:
     volumeMounts:
     - name: web-content-dir
       mountPath: "/web-content"
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: web-content-dir
+      mountPath: /usr/share/nginx/html
   volumes:
   - name: web-content-dir
     emptyDir: {}
@@ -48,12 +48,12 @@ $
 Watch the pod going through several phases:
 ```
 $ kubectl get pods -w
-NAME                         READY     STATUS     RESTARTS   AGE
-init-container-demo          0/1       Init:0/1   0          0s
-multitool-5558fd48d4-snr8j   1/1       Running    0          22h
-init-container-demo   0/1       Init:0/1   0         4s
-init-container-demo   0/1       PodInitializing   0         6s
-init-container-demo   1/1       Running   0         7s
+NAME                         READY     STATUS            RESTARTS   AGE
+init-container-demo          0/1       Init:0/1          0          0s
+multitool-5558fd48d4-snr8j   1/1       Running           0          22h
+init-container-demo          0/1       Init:0/1          0          4s
+init-container-demo          0/1       PodInitializing   0          6s
+init-container-demo          1/1       Running           0          7s
 $ 
 ```
 
@@ -69,7 +69,7 @@ $
 Examine the pod using `kubectl describe` and also by logging into it using `kubectl exec` .
 
 # Multi-container pods and side-cars:
-There are instances when you may have two containers in the same pod. A very primitiv example would be a pod in which one container generates the web content on continuous basis, and another container serves the web content. This is different from init container example. In the init-container example, the "puller" pulls the static content only once, saves it in a shared storage, and exists, and the main web-server container serves that static content. In this example there is no puller, instead there is a "content-generator", which will run as a **side-car** , and will constantly add content in the the shared storage volume, which the web server will use to serve the content.
+There are instances when you may have two containers in the same pod. A very primitive example would be a pod in which one container generates the web content on continuous basis, and another container serves the web content. This is different from init container example. In the init-container example, the "puller" pulls the static content *only once*, saves it in a shared storage, and exists, and the main web-server container takes over serves that static content. In this example there is no puller, instead there is a "content-generator", which will run as a **side-car** , and will constantly add content in the the shared storage volume, which the web server will use to serve the content.
 
 Here is the code for such a multi-contianer pod:
 
@@ -88,6 +88,7 @@ spec:
     volumeMounts:
     - name: web-content-dir
       mountPath: /usr/share/nginx/html
+
   - name: content-generator
     image: busybox
     command: ['sh', '-c', 'while true; do echo Date and Time is $(date) >> /web-content/index.html && sleep 5; done']
@@ -119,7 +120,7 @@ $
 Lets login into the multitool and try to access the web page of the nginx container from the multicontainer-pod.
 
 ```
-$ kubectl exec -it multitool-5558fd48d4-snr8j bash
+$ kubectl exec -it multitool-5558fd48d4-snr8j -- bash
 
 bash-4.4# curl 10.200.0.22
 
@@ -148,7 +149,7 @@ Date and Time is Sat Mar 9 16:22:03 UTC 2019
 Lets exec into the content-generator container in this multi-container pod. If you try to exec into any of the container in a multi-container pod, without specifying the name of the container, you will see the following message:
 
 ```
-$ kubectl exec -it multi-container-demo /bin/sh
+$ kubectl exec -it multi-container-demo -- /bin/sh
 Defaulting container name to nginx.
 Use 'kubectl describe pod/multi-container-demo -n default' to see all of the containers in this pod.
 / #
@@ -158,8 +159,9 @@ You can see that if you do not specify the container name while doing exec (or e
 
 So, now we will specify the exact container in the pod to exec into:
 
-```shell
-$ kubectl exec -it multi-container-demo -c content-generator /bin/sh
+```
+$ kubectl exec -it multi-container-demo -c content-generator -- /bin/sh
+
 / # ls
 bin          etc          proc         sys          usr          web-content
 dev          home         root         tmp          var
@@ -194,8 +196,3 @@ $ kubectl logs -f multi-container-demo -c nginx
 10.200.1.28 - - [09/Mar/2019:16:22:53 +0000] "GET / HTTP/1.1" 200 765 "-" "curl/7.61.1" "-"
 10.200.1.28 - - [09/Mar/2019:16:22:55 +0000] "GET / HTTP/1.1" 200 810 "-" "curl/7.61.1" "-"
 ```
-
-
-
-
-

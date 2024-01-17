@@ -1,8 +1,10 @@
 # Service Discovery and Loadbalancing
-In almost every Kubernetes cluster, there is an addon called CoreDNS (previously KubeDNS), which provides service discovery within the cluster, using DNS mechanism. Everytime a *service* is created in kubernetes cluster, it is registered in CoreDNS with the name of the service, it's ClusterIP. e.g. `nginx.default.svc.cluster.local` . There will be more on this later in this document. Each service will have a name, a clusterIP, and also the list of backends linked with this service. This *service* also acts as an internal load balancer, when the service has more than one endpoints. e.g. A nginx delployment can have four replicas. When exposed as a service, the service will have four endpoints. When this service is accessed by a client (a pod or any other process), the service does load balancing between these endpoints. 
+In almost every Kubernetes cluster, there is an addon called CoreDNS (previously KubeDNS), which provides service discovery within the cluster, using DNS mechanism. Every time a *service* is created in kubernetes cluster, it is registered in CoreDNS with the name of the service, it's ClusterIP. e.g. `nginx.default.svc.cluster.local` . There will be more on this later. Each service will have a name, a clusterIP, and also the list of backends linked with this service. 
+
+The kubernetes *service* also acts as an internal load balancer, when the service has more than one endpoints. e.g. A nginx deployment can have four replicas. When exposed as a service, the service will have four endpoints. When this service is accessed by a client (a pod or any other process), the service does load balancing between these endpoints. 
 
 
-## Accessing a service:
+## Types of a kubernetes service:
 To access the actual process/service inside any given pod (e.g. nginx web service), we need to *expose* the related deployment as a kubernetes *service*. We have three main ways of exposing the deployment , or in other words, we have three ways to define a *service*. We can access these three types of services in three different ways. The three types of services are:
 
 * ClusterIP
@@ -62,9 +64,6 @@ Endpoints:         100.96.1.148:80
 Session Affinity:  None
 Events:            <none>
 ```
-
-You can of-course use `... describe pod ...` , ` ... describe deployment ...` , etc.
-
 
 **Additional notes about the Cluster-IP:**
 * The IPs assigned to services as Cluster-IP are from a different Kubernetes network called *Service Network*, which is a completely different network altogether. i.e. it is not connected (nor related) to pod-network or the infrastructure network. Technically it is actually not a real network per-se; it is a labelling system, which is used by Kube-proxy on each node to setup correct iptables rules. (This is an advanced topic, and not our focus right now).
@@ -160,109 +159,132 @@ Now, we can access this service without using any special port numbers:
 
 ## High Availability / Load balancing
 
-To prove that multiple pods of the same deployment provide high availability, we do a small exercise. To visualize it, we need to run a small web server which could return us some uniqe content when we access it. We will use our trusted multitool for it. Lets run it as a separate deployment and access it from our local computer.
+To prove that multiple pods of the same deployment provide high availability, we do a small exercise. To visualize it, we need to run a small web server which could return us some unique content when we access it. We will use our trusted multitool for it. Lets run it as a separate deployment and access it from our local computer.
 
-```shell
-$ kubectl create deployment customnginx --image=praqma/network-multitool
-deployment.apps/customnginx created
-$ kubectl scale deployment customnginx --replicas=4
-deployment.extensions/customnginx scaled
+```
+$ kubectl create deployment simplewebserver --image=wbitt/network-multitool
+deployment.apps/simplewebserver created
+
+$ kubectl scale deployment simplewebserver --replicas=4
+deployment.extensions/simplewebserver scaled
 ```
 
-```shell
+```
 $ kubectl get pods
-NAME                           READY     STATUS    RESTARTS   AGE
-customnginx-3557040084-1z489   1/1       Running   0          49s
-customnginx-3557040084-3hhlt   1/1       Running   0          49s
-customnginx-3557040084-c6skw   1/1       Running   0          49s
-customnginx-3557040084-fw1t3   1/1       Running   0          49s
-multitool-5f9bdcb789-k7f4q     1/1       Running   0          19m
+$ kubectl get pods
+NAME                              READY   STATUS    RESTARTS   AGE
+multitool-67879794bc-khw6j        1/1     Running   0          102m
+simplewebserver-f758df4b7-mbb58   1/1     Running   0          6s
+simplewebserver-f758df4b7-mvcpl   1/1     Running   0          6s
+simplewebserver-f758df4b7-q976d   1/1     Running   0          118s
+simplewebserver-f758df4b7-swpbq   1/1     Running   0          6s
 ```
 
 Lets create a service for this deployment as a type=LoadBalancer:
 
-```shell
-$ kubectl expose deployment customnginx --port=80 --type=LoadBalancer
-service/customnginx exposed
+
+**Note:** The service of type LoadBalancer is only used to be able to access this service from the internet. This load balancing feature is built into all three service types.
+
+```
+$ kubectl expose deployment simplewebserver --port=80 --type=LoadBalancer
+service/simplewebserver exposed
 ```
 
 Verify the service and note the public IP address:
 
-```shell
+```
 $ kubectl get services
-NAME          TYPE           CLUSTER-IP    EXTERNAL-IP        PORT(S)        AGE
-customnginx   LoadBalancer   100.67.40.4   35.205.60.41       80:30087/TCP   1m
-kubernetes    ClusterIP      100.64.0.1    <none>             443/TCP        17h
+NAME              TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)        AGE
+kubernetes        ClusterIP      10.109.0.1    <none>           443/TCP        3y248d
+simplewebserver   LoadBalancer   10.109.6.56   34.105.211.152   80:31519/TCP   48s
 ```
 
 Query the service, so we know it works as expected:
 
-```shell
-$ curl -s 35.205.60.41 | grep IP
-Container IP: 100.96.1.150 <BR></p>
+```
+$ curl -s 34.105.211.152 | grep IP
+
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-q976d - 10.44.1.33 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
 ```
 
 Next, setup a small bash loop on your local computer to curl this IP address, and get it's IP address.
 
-```shell
-$ while true; do sleep 1; curl -s 35.205.60.41; done
-Praqma Network MultiTool (with NGINX) - customnginx-7fcfd947cf-zbvtd - 100.96.2.36 <BR></p>
-Praqma Network MultiTool (with NGINX) - customnginx-7fcfd947cf-zbvtd - 100.96.1.150 <BR></p>
-Praqma Network MultiTool (with NGINX) - customnginx-7fcfd947cf-zbvtd - 100.96.2.37 <BR></p>
-Praqma Network MultiTool (with NGINX) - customnginx-7fcfd947cf-zbvtd - 100.96.2.37 <BR></p>
-Praqma Network MultiTool (with NGINX) - customnginx-7fcfd947cf-zbvtd - 100.96.2.36 <BR></p>
+```
+$ while true; do sleep 1; curl -s 34.105.211.152; done
+
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-swpbq - 10.44.2.27 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-q976d - 10.44.1.33 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-mbb58 - 10.44.1.34 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-swpbq - 10.44.2.27 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-swpbq - 10.44.2.27 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
+WBITT Network MultiTool (with NGINX) - simplewebserver-f758df4b7-swpbq - 10.44.2.27 - HTTP: 80 , HTTPS: 443 . (Formerly praqma/network-multitool)
 ^C
 ```
 
-We see that when we query the LoadBalancer IP, it is giving us result/content from all four containers. None of the curl commands is timed out. Now, if we kill three out of four pods, the service should still respond, without timing out. We let the loop run in a separate terminal, and kill three pods of this deployment from another terminal.
+Or:
 
-```shell
-$ kubectl delete pod customnginx-3557040084-1z489 customnginx-3557040084-3hhlt customnginx-3557040084-c6skw
-pod "customnginx-3557040084-1z489" deleted
-pod "customnginx-3557040084-3hhlt" deleted
-pod "customnginx-3557040084-c6skw" deleted
+```
+$ while true; do sleep 2; curl -s 34.105.211.152 | cut -d\- -f 5; done
+ 10.44.1.33 
+ 10.44.1.33 
+ 10.44.1.33 
+ 10.44.2.28 
+ 10.44.1.33 
+ 10.44.2.28 
+ 10.44.1.33 
+ 10.44.1.33 
+ 10.44.2.27 
+ 10.44.1.34 
+```
+
+We see that when we query the LoadBalancer IP, it is giving us result/content from all four containers. 
+
+Now, if we kill three out of four pods, the service should still respond, without timing out. We let the loop run in a separate terminal, and kill three pods of this deployment from another terminal.
+
+```
+$ kubectl delete pod simplewebserver-f758df4b7-mbb58 simplewebserver-f758df4b7-mvcpl simplewebserver-f758df4b7-q976d 
+pod "simplewebserver-f758df4b7-mbb58" deleted
+pod "simplewebserver-f758df4b7-mvcpl" deleted
+pod "simplewebserver-f758df4b7-q976d" deleted
+
 ```
 
 Immediately check the other terminal for any failed curl commands or timeouts.
 
-```shell
-Container IP: 100.96.1.150 <BR></p>
-Container IP: 100.96.1.150 <BR></p>
-Container IP: 100.96.2.37 <BR></p>
-Container IP: 100.96.1.149 <BR></p>
-Container IP: 100.96.1.149 <BR></p>
-Container IP: 100.96.1.150 <BR></p>
-Container IP: 100.96.2.36 <BR></p>
-Container IP: 100.96.2.37 <BR></p>
-Container IP: 100.96.2.37 <BR></p>
-Container IP: 100.96.2.38 <BR></p>
-Container IP: 100.96.2.38 <BR></p>
-Container IP: 100.96.2.38 <BR></p>
-Container IP: 100.96.1.151 <BR></p>
+```
+ 10.44.2.29 
+ 10.44.2.29 
+ 10.44.2.29 
+ 10.44.2.27 
+ 10.44.2.29 
+ 10.44.1.36 
+ 10.44.2.29 
+ 10.44.2.27 
+ 10.44.2.29 
+ 10.44.1.35 
+ 10.44.2.29 
 ```
 
 We notice that no curl command failed, and actually we have started seeing new IPs. Why is that? It is because, as soon as the pods are deleted, the deployment sees that it's desired state is four pods, and there is only one running, so it immediately starts three more to reach that desired state. And, while the pods are in process of starting, one surviving pod takes the traffic.
 
-```shell
+```
 $ kubectl get pods
-NAME                           READY     STATUS        RESTARTS   AGE
-customnginx-3557040084-0s7l8   1/1       Running       0          15s
-customnginx-3557040084-1z489   1/1       Terminating   0          16m
-customnginx-3557040084-3hhlt   1/1       Terminating   0          16m
-customnginx-3557040084-bvtnh   1/1       Running       0          15s
-customnginx-3557040084-c6skw   1/1       Terminating   0          16m
-customnginx-3557040084-fw1t3   1/1       Running       0          16m
-customnginx-3557040084-xqk1n   1/1       Running       0          15s
+NAME                              READY   STATUS    RESTARTS   AGE
+multitool-67879794bc-khw6j        1/1     Running   0          129m
+simplewebserver-f758df4b7-4cqg6   1/1     Running   0          84s
+simplewebserver-f758df4b7-sq8fp   1/1     Running   0          84s
+simplewebserver-f758df4b7-swpbq   1/1     Running   0          27m
+simplewebserver-f758df4b7-vdfjg   1/1     Running   0          84s
 ```
 
-This proves, Kubernets provides us High Availability, using multiple replicas of a pod.
+This clearly shows Kubernets provides us High Availability, using multiple replicas of a pod.
 
 ## Clean up
 
 Delete deployments and services as follow:
 
-```shell
-$ kubectl delete deployment customnginx
-$ kubectl delete deployment multitool
-$ kubectl delete service customnginx
+```
+kubectl delete deployment simplewebserver
+kubectl delete deployment multitool
+kubectl delete service simplewebserver
 ```

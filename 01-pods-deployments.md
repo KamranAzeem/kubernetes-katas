@@ -16,23 +16,47 @@ We start by creating our first deployment. Normally people will run an nginx con
 Here is the command to do it:
 
 ```
-kubectl run multitool  --image=praqma/network-multitool
+kubectl run multitool  --image=wbitt/network-multitool
 ```
 
 You should be able to see the following output:
 
 ```
-$ kubectl run multitool --image=praqma/network-multitool 
-deployment "multitool" created
+$ kubectl run multitool --image=wbitt/network-multitool 
+pod/multitool created
 ```
 
-What this command does behind the scenes is, it creates a deployment named multitool, starts a pod using this docker image (praqma/network-multitool), and makes that pod a memeber of that deployment. You don't need to confuse yourself with all these details at this stage. This is just extra (but vital) information. Just so you know what we are talking about, check the list of pods and deployments:
+This command creates a pod named multitool, starts the pod using this docker image (wbitt/network-multitool).
 
 List of pods:
 ```
 $ kubectl get pods
 NAME                         READY     STATUS    RESTARTS   AGE
-multitool-3148954972-k8q06   1/1       Running   0          3m
+multitool                    1/1       Running   0          3m
+```
+
+Delete the pod:
+
+```
+$ kubectl  delete pod multitool 
+pod "multitool" deleted
+```
+
+When you delete a pod (which is not a member of a deployment), it is not recreated.
+
+Next, create a deployment. A deployment in-turn creates a replicaset, which in-turn creates the pod(s). 
+
+```
+$ kubectl create deployment multitool  --image=wbitt/network-multitool
+deployment.apps/multitool created
+```
+
+List of pods:
+
+```
+$ kubectl get pods
+NAME                         READY   STATUS    RESTARTS   AGE
+multitool-67879794bc-h2lmb   1/1     Running   0          2m32s
 ```
 
 List of deployments:
@@ -42,22 +66,70 @@ NAME        DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
 multitool   1         1         1            1           3m
 ```
 
-There is actually also a replicaset, which is created as a result of the `run` command above, but we did not mention earlier; because that is not super important to know at this point. It is something which deals with the number of copies of this pod. It will be covered in later exercise. It is shown below just for the sake of completeness.
+List of replicasets:
+
 ```
 $ kubectl get replicasets
-NAME                   DESIRED   CURRENT   READY     AGE
-multitool-3148954972   1         1         1         3m
+NAME                   DESIRED   CURRENT   READY   AGE
+multitool-67879794bc   1         1         1       3m18s
 ```
 
-Ok. The bottom line is that we wanted to have a pod running ,and we have that. 
+If you kill / delete the pod (or if it dies or crashes), Kubernetes will recreate it automatically. This is the "Kubernetes Promise" fulfilled.
+
+```
+$ kubectl delete pod multitool-67879794bc-h2lmb 
+pod "multitool-67879794bc-h2lmb" deleted
 
 
-Lets setup another pod, a traditional nginx deployment, with a specific version - 1.7.9. 
+$ kubectl get pods
+NAME                         READY   STATUS    RESTARTS   AGE
+multitool-67879794bc-khw6j   1/1     Running   0          3s
+```
+
+To check how the internals of a deployment looks like, you can always use the `describe` command:
+
+```
+$ kubectl describe deployment multitool
+
+Name:                   multitool
+Namespace:              default
+CreationTimestamp:      Wed, 17 Jan 2024 11:52:19 +0100
+Labels:                 app=multitool
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               app=multitool
+Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=multitool
+  Containers:
+   network-multitool:
+    Image:        wbitt/network-multitool
+    Port:         <none>
+    Host Port:    <none>
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Progressing    True    NewReplicaSetAvailable
+  Available      True    MinimumReplicasAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   multitool-67879794bc (1/1 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  25m   deployment-controller  Scaled up replica set multitool-67879794bc to 1
+```
+
+Lets setup another pod, a traditional nginx deployment, with a specific version - `1.7.9`. 
 
 
 Setup an nginx deployment with nginx:1.7.9
 ```
-kubectl run nginx  --image=nginx:1.7.9
+kubectl create deployment nginx  --image=nginx:1.7.9
 ```
 
 You get another deployment and a replicaset as a result of above command, shown below, so you know what to expect:
@@ -104,7 +176,7 @@ The contents of `nginx-simple-deployment.yaml` are as follows:
 ```
 $ cat nginx-simple-deployment.yaml
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
@@ -169,7 +241,7 @@ nginx-431080787-tx5m7        1/1       Running   0          12s
 ```
 
 ## Creating a standalone pod:
-Often times you will need to create a pod, without making it a member of a deployment or daemon-set, or anything else. For those instances, here is how you would create a standalone pod.
+Often times you will need to simply create a pod, without making it a member of a deployment or anything else. For those instances, here is how you would create a standalone pod.
 
 ```
 apiVersion: v1
@@ -208,7 +280,7 @@ spec:
     command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']
 
 ```
-The above code will create a pod, which will go into a sleep for 3600 seconds ( one hour), and will exit (die) dilently. Good to run certain diagnostics.
+The above code will create a pod, which will go into a sleep for 3600 seconds ( one hour), and will exit (die) silently. Good to know for troubleshooting/diagnostics.
 
 ```
 $ kubectl create -f support-files/standalone-busybox-pod.yaml 
@@ -221,10 +293,10 @@ standalone-busybox-pod   1/1       Running   0          30s
 $
 ```
 
-PS. Praqma has an excellent multitool for network (and container) troubleshooting. It is called praqma/network-multitool, and it runs nginx web server, eliminating a need to pass any custom commands. You can run it like this:
+PS. I have an excellent multitool for network (and container) troubleshooting. It is called `wbitt/network-multitool`, and it runs nginx web server, eliminating a need to pass any custom commands. You can run it like this:
 
 ```
-$ kubectl run multitool --image praqma/network-multitool
+$ kubectl create deployment multitool --image wbitt/network-multitool
 ```
 
 
@@ -234,14 +306,14 @@ Just like `docker exec`, you can `exec` into a kubernetes pod/container by using
 You can `exec` into the pod like so:
 
 ```
-[kamran@kworkhorse kubernetes-katas]$ kubectl exec -it standalone-busybox-pod /bin/sh
+[kamran@kworkhorse ~]$ kubectl exec -it standalone-busybox-pod -- /bin/sh
 
 / # 
 ```
 
 You can do a lot of troubleshooting after you exec (log) into the pod:
 ```
-[kamran@kworkhorse kubernetes-katas]$ kubectl exec -it standalone-busybox-pod /bin/sh
+[kamran@kworkhorse ~]$ kubectl exec -it standalone-busybox-pod -- /bin/sh
 
 / # ls -l
 total 16
@@ -271,7 +343,7 @@ $
 
 An example of network-multitool: 
 ```
-$ kubectl run multitool --image=praqma/network-multitool 
+$ kubectl run multitool --image=wbitt/network-multitool 
 deployment.apps "multitool" created
 
 $ kubectl get pods
@@ -283,7 +355,8 @@ $
 ```
 
 ```
-$ kubectl exec -it multitool-5558fd48d4-lggqg /bin/bash
+$ kubectl exec -it multitool-5558fd48d4-lggqg -- /bin/bash
+
 bash-4.4# dig +short yahoo.com
 98.137.246.8
 98.137.246.7
@@ -328,25 +401,22 @@ nginx-431080787-tx5m7        1/1       Running   0          12m       100.96.1.1
 Now, we `exec` into our multitool, as shown below and use the `curl` command from the pod to access nginx service in the nginx pod:
 
 ```
-$ kubectl exec -it multitool-3148954972-k8q06 bash
-[root@multitool-3148954972-k8q06 /]#
-```
+$ kubectl exec -it multitool-3148954972-k8q06 -- bash
 
-```
-[root@multitool-3148954972-k8q06 /]# curl -s 100.96.1.148 | grep h1
+bash-4.4# curl -s 100.96.1.148 | grep h1
 <h1>Welcome to nginx!</h1>
-[root@multitool-3148954972-k8q06 /]# 
 ```
 
 We accessed the nginx webserver in the nginx pod using another (multitool) pod in the cluster, because at this point in time the nginx web-service (running as pod) is not accessible through a *service*. Services are explained separately.
 
 
-This concludes the exercise, happy coding!
+This concludes the exercise!
 
 ------------------
 
 ## Useful commands
 
+```
     kubectl config get-contexts
     kubectl config use-context minikube
     kubectl version
@@ -358,6 +428,6 @@ This concludes the exercise, happy coding!
     kubectl get events --sort-by=.metadata.creationTimestamp
     kubectl api-resources # kubectl 1.11+
     kubectl api-versions
-
+```
 
 Cheatsheat: [https://kubernetes.io/docs/reference/kubectl/cheatsheet/](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)

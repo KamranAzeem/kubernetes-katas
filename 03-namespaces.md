@@ -1,7 +1,7 @@
 # Namespaces:
 Namespaces are the default way for kubernetes to separate resources. Namespaces do not share anything between them, which is important to know. This is quite powerful concept, but not unusual, as in computing - we are used to having isolated environments such as home directories, jailed environments, etc. Kubernetes clusters come with a namespace called **default**.
 
-When you execute a kubectl command without specifying a namespace, it is run in/against the namespace named **default**! So far all the commands you have executed in the previous exercise, have been executed in the *default* namespace. You can optionally use the namespace flag (-n <namespace>) to execute the command a specific namespace. When you are creating Kubernetes objects though *yaml* files, you can specify a namespace for a particular resource. 
+When you execute a kubectl command without specifying a namespace, it is run in/against the namespace named **default**! So far all the commands you have executed in the previous exercise, have been executed in the *default* namespace. You can optionally use the namespace flag (`-n <namespace>`) to execute the command a specific namespace. When you are creating Kubernetes objects though *yaml* files, you can specify a namespace for a particular resource. 
 
 **Note:** In case, you are on a shared cluster for this workshop, then watch out for which namespace you are using to deploy your objects in. 
 
@@ -50,7 +50,7 @@ kubectl get pods
 So let's try to create an nginx deployment in the *dev* namespace.
 
 ```
-$ kubectl --namespace=dev run nginx --image=nginx
+$ kubectl --namespace=dev create deployment nginx --image=nginx
 deployment "nginx" created
 
 $ kubectl get pods -n dev
