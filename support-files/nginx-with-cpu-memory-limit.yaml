@@ -3,27 +3,29 @@ kind: Deployment
 metadata:
   name: nginx
   labels:
-    app: nginx          # arbitrary label(s) assigned to this deployment. This can be used by an upstream object, such as - a service.
+    app: nginx
 spec:
   replicas: 1
   selector:
-    matchLabels:        # labels 'used' by the deployment and replica-set selector, to find related pods.
+    matchLabels:       
+      # labels 'used' by the deployment and replica-set selector, to find related pods.
       app: nginx
   template:
     metadata:
       labels:
-        app: nginx      # label assigned to the pods of this deployment
+        # label assigned to the pods of this deployment
+        app: nginx      
     spec:
       containers:
       - name: nginx
-        image: nginx:latest
+        image: nginx:1.9.1
         ports:
         - containerPort: 80
         resources:
           requests:
             cpu: "5m"
-            memory: "5Mi"
+            memory: "20Mi"
           limits:
             cpu: "10m"
-            memory: "20Mi"
+            memory: "50Mi"
 

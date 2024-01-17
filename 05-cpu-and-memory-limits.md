@@ -1,7 +1,7 @@
-It is important to learn about CPU and memory limits at this point in time, because this knowledge will be useful in next excercises.
+It is important to learn about CPU and memory limits at this point in time, because this knowledge will be useful in next exercises.
 
 # Why to use CPU and memory limits?
-It is possible that the worker node in the kubernetes cluster you received from your instructor, is a small spec node (1 CPU and 1.7 GB RAM). In that case, please note that certain *system pods* running in **kube-system** namespace take away as much as 60% (or 600m) of the CPU, and you are left with 40% of CPU to run your pods in order to do these excercises. It is also important to note that by default each `nginx` and `nginx:alpine` instance will take away 10% (or 100m) CPU. (This behavior was seen on a small one-node k8s cluster in GCP). This means, that at any given time, you will not be able to run more than four (light weight) pods in total. So when you do the **scaling** and **rolling updates** exercises, you need to keep that in mind. You can limit the use of CPU and Memory resources in your pods and assign them very little CPU. e.g. Allocating `5m` CPU to nginx pods does not have any negative effect, and they just run fine.
+It is possible that the worker node in the kubernetes cluster you are using, is a small spec node (1 CPU and 1.7 GB RAM). In that case, please note that certain *system pods* running in **kube-system** namespace take away as much as 60% (or 600m) of the CPU, and you are left with 40% of CPU to run your pods in order to do these exercises. It is also important to note that by default each `nginx` and `nginx:alpine` instance will take away 10% (or 100m) CPU. (This behavior was seen on a small one-node k8s cluster in GCP). This means, that at any given time, you will not be able to run more than four (light weight) pods in total. So when you do the **scaling** and **rolling updates** exercises, you need to keep that in mind. You can limit the use of CPU and Memory resources in your pods and assign them very little CPU. e.g. Allocating `5m` CPU to nginx pods does not have any negative effect, and they just run fine.
 
 If you are running a cluster of your own such as minikube or kubeadm based cluster, and if you setup the VMs to have multiple CPUs during the VM setup, you will not likely encounter this limitation. But you should still make a note of it. However, this does not mean that you do not setup these limits in your deployments just because you have large sized worker nodes. It is actually highly recommended that you setup the CPU and memory limits for all your pods/deployments to protect abuse of system resources. This abuse may happen if an application has a fault in it's code and starts over-consuming cpu and/or memory. It is also possible that someone gains access to a pod running inside your cluster, and starts abusing with malicious intent, such as sending spam, or mining coins, etc. We have actually seen this happening! :) 
 
@@ -14,7 +14,7 @@ Check this document for more information: [https://kubernetes.io/docs/concepts/c
 Lets create and run a simple nginx deployment without using any CPU or memory limits and see what is going on in the cluster:
 
 ```
-$ kubectl run nginx --image=nginx:alpine
+$ kubectl create deployment nginx --image=nginx:alpine
 deployment.apps "nginx" created
 
 $ kubectl get rs
@@ -29,7 +29,7 @@ nginx-6b4b85b77b-w8xww       1/1       Running   0          15s
 ```
 
 
-You can *describe* the nginx deployment and the related pod and replica-set. If no cpu and memory limits were provided when this deployment was created, then you will not find that information in the describe deployment|rs|pod commands. 
+You can *describe* the nginx deployment and the related pod and replica-set. If no cpu and memory limits were provided when this deployment was created, then you will not find that information in the deployment/rs/pod description. 
 
 ```
 $ kubectl describe deployment nginx
@@ -107,22 +107,25 @@ $ kubectl delete deployment nginx
 
 Create a new one with some limits. Here is what the deployment file looks like, with cpu and memory limits defined in it
 ```
-$ cat support-files/nginx-with-cpu-memory-limit.yaml 
-apiVersion: extensions/v1beta1
+$ cat support-files/nginx-with-cpu-memory-limit.yaml
+
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
   labels:
-    app: nginx          # arbitrary label(s) assigned to this deployment. This can be used by an upstream object, such as - a service.
+    app: nginx
 spec:
   replicas: 1
   selector:
-    matchLabels:        # labels 'used' by the deployment and replica-set selector, to find related pods.
+    matchLabels: 
+      # labels 'used' by the deployment and replica-set selector, to find related pods.
       app: nginx
   template:
     metadata:
       labels:
-        app: nginx      # label assigned to the pods of this deployment
+        # label assigned to the pods of this deployment
+        app: nginx      
     spec:
       containers:
       - name: nginx
@@ -141,8 +144,8 @@ spec:
 
 Create the deployment:
 ```
-$ kubectl create -f nginx-with-cpu-memory-limit.yaml 
-deployment.extensions/nginx created
+$ kubectl create -f support-files/nginx-with-cpu-memory-limit.yaml 
+deployment.apps/nginx created
 
 $ kubectl get pods
 NAME                         READY   STATUS    RESTARTS   AGE
@@ -219,7 +222,7 @@ QoS Class:       Burstable
 . . . 
 ```
 
-This time all three objects (deployment, replica-set and pods), have the cpu and memory information. Also notice that the QoS class for the pod has changed from "Best Effort" to "Burstable". You will notice this if you did a `describe` earlier, on a pod without cpu and memory limits set.
+This time all three objects (deployment, replica-set and pods), have the cpu and memory information. Also notice that the `QoS class` for the pod has changed from **"Best Effort"** to **"Burstable"** . You will notice this if you did a `describe` earlier, on a pod without cpu and memory limits set.
 
 
 If we do a `describe` on the worker node now, we will see that the node knows about these limits for the nginx pod.
@@ -325,6 +328,7 @@ Events:              <none>
 If you login to your worker node over ssh, you will see the process hogging the CPU and load average going high:
 
 Load Average:
+
 ```
 $ uptime
  11:06:24 up 4 days, 21:45,  1 user,  load average: 1.43, 0.98, 0.73
@@ -359,6 +363,9 @@ pod "cpu-stress-demo" deleted
 
 
 # Best practice
-Often the developers forget to setup the cpu and memory requirement/limits for their applications in the deployment definitions. If an abusive/broken app is run, it can take down an entire worker node; and if that app has multiple replicas running on multiple worker nodes, then multiple worker nodes will be severely affected. It is best to setup a very low default CPU and memory limit on namespace level, so if someone runs a deployment without the limits, their applications will either not start, or will be very slow. They can then incorporate these requirements and limits in their pod/deployment definitions to fix this.
+Often the developers forget to setup the cpu and memory requirement/limits for their applications in the deployment definitions. If an abusive/broken app is run, it can take down an entire worker node; and if that app has multiple replicas running on multiple worker nodes, then multiple worker nodes will be severely affected. 
+
+It is best to setup a very low default CPU and memory limit on namespace level, so if someone runs a deployment without the limits, their applications will either not start, or will be very slow. They can then incorporate/adjust these requirements and limits in their pod/deployment definitions to fix this.
 
 Check this document on how to setup default CPU and memory limits on namespace level: [https://kubernetes.io/docs/tasks/administer-cluster/manage-resources/memory-default-namespace/](https://kubernetes.io/docs/tasks/administer-cluster/manage-resources/memory-default-namespace/)
+
