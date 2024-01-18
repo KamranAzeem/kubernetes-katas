@@ -9,6 +9,91 @@ It is also useful to set these limits because it is useful for the Kubernetes Sc
 
 Check this document for more information: [https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/)
 
+## Check current CPU and memory usage of nodes and pods of your cluster:
+
+### minikube:
+On minikube you will need to enable an `addon` named `metrics-server`.
+
+```
+$ kubectl  top pods
+error: Metrics API not available
+```
+
+Enable the metrics-server addon:
+
+```
+$ minikube  addons enable metrics-server
+💡  metrics-server is an addon maintained by Kubernetes. For any concerns contact minikube on GitHub.
+You can view the list of minikube maintainers at: https://github.com/kubernetes/minikube/blob/master/OWNERS
+    ▪ Using image registry.k8s.io/metrics-server/metrics-server:v0.6.4
+🌟  The 'metrics-server' addon is enabled
+```
+
+After a couple of minutes, check the resource utilization:
+
+```
+$ kubectl top nodes
+
+NAME       CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+minikube   337m         8%     2114Mi          13%       
+```
+
+```
+$ kubectl top pods --all-namespaces
+NAMESPACE       NAME                                               CPU(cores)   MEMORY(bytes)   
+argocd          argocd-application-controller-0                    5m           81Mi            
+argocd          argocd-applicationset-controller-b96c94477-kbxxc   1m           90Mi            
+argocd          argocd-dex-server-bc8f9b8cc-8sppw                  1m           87Mi            
+argocd          argocd-image-updater-88454679d-zzjb9               2m           52Mi            
+argocd          argocd-notifications-controller-6c469d86c8-4z4l9   1m           17Mi            
+argocd          argocd-redis-6976fc7dfc-6wb5m                      2m           9Mi             
+argocd          argocd-repo-server-558c46949c-n5mfk                1m           60Mi            
+argocd          argocd-server-6bd5c565cf-kbhq5                     2m           22Mi            
+default         multitool-7f8c7df657-gb942                         0m           13Mi            
+default         nginx-5574988fcf-7w2fz                             0m           1Mi             
+default         nginx-5574988fcf-tz22q                             0m           1Mi             
+default         nginx-statefulset-0                                0m           1Mi             
+ingress-nginx   ingress-nginx-controller-7c6974c4d8-pnt9d          1m           157Mi           
+kube-system     coredns-5dd5756b68-96p27                           2m           56Mi            
+kube-system     etcd-minikube                                      17m          235Mi           
+kube-system     kube-apiserver-minikube                            46m          404Mi           
+kube-system     kube-controller-manager-minikube                   14m          123Mi           
+kube-system     kube-proxy-s9kc7                                   1m           60Mi            
+kube-system     kube-scheduler-minikube                            3m           63Mi            
+kube-system     metrics-server-7c66d45ddc-dmj4h                    3m           13Mi            
+kube-system     storage-provisioner                                2m           13Mi            
+```
+
+
+
+### GKE and other kubernetes clusters:
+
+```
+$ kubectl top nodes
+NAME                                                 CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+gke-witline-production-nodepool-1-24-739c7460-hpfb   360m         18%    4556Mi          81%       
+gke-witline-production-nodepool-1-24-739c7460-nbhl   693m         35%    5629Mi          100%      
+```
+
+
+```
+$ kubectl top pods -n prod
+NAME                                          CPU(cores)   MEMORY(bytes)   
+autogateway-com-77cd4c895-mxvsj               37m          207Mi           
+bestboilerdeals-uk-677ddd6596-4whqv           1m           355Mi           
+cooker-wbitt-com-898fc98cc-vbhbb              21m          73Mi            
+dgheating-online-d8f6dd9cc-gsh8k              1m           221Mi           
+dgheating-org-uk-589f996dd-gvf6l              52m          273Mi           
+gasheatinginstallers-co-uk-6659876df4-7sbmr   2m           324Mi           
+mongodb-0                                     5m           79Mi            
+mysql-0                                       501m         2045Mi          
+nuget-witpass-co-uk-0                         1m           85Mi            
+postgres-0                                    15m          181Mi           
+rabbitmq-0                                    16m          119Mi           
+safeeras-co-uk-76d58fd676-w927r               2m           323Mi           
+```
+
+
 
 ## Example of not setting CPU and memory limits:
 Lets create and run a simple nginx deployment without using any CPU or memory limits and see what is going on in the cluster:
