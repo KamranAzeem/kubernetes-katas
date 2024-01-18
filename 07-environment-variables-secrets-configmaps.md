@@ -613,5 +613,12 @@ kubectl create -f support-files/nginx-ssl.yaml
 You should be able to see nginx running. Expose it as a service and `curl` it from your computer. You can also `curl` it through the multitool pod from within the cluster without exposing it as a service.
 
 
+------
+# Secrets management:
 
+An important question is: where to keep/store secrets in the first place and how to access them without creating them manually, or without saving them in text files? Afterall, you will need to share the secrets with your team members. How would you do that.
 
+For this there are several solutions.
+* Encrypted secrets stored within code repositories - not recommended
+* External-secrets with GCP/Vault
+* Secrets CSI with Vault/GCP
