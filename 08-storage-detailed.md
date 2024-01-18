@@ -1147,7 +1147,7 @@ Next, we are going to create a deployment, and it's pod will use this storage. H
 ```
 $ cat support-files/nginx-persistent-storage.yaml
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-deployment
