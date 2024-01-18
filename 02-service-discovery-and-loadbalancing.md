@@ -166,7 +166,7 @@ $ kubectl create deployment simplewebserver --image=wbitt/network-multitool
 deployment.apps/simplewebserver created
 
 $ kubectl scale deployment simplewebserver --replicas=4
-deployment.extensions/simplewebserver scaled
+deployment.apps/simplewebserver scaled
 ```
 
 ```
