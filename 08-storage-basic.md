@@ -16,6 +16,8 @@ In this document, I will show three modes/methods of PV and PVC provisioning:
 * Semi automatic
 * Fully automatic
 
+We will also discuss the difference between `Deployment` and `Statefulset` and the use-cases.
+
 
 ## Manual provisioning of PV and PVC:
 In *manual* mode, you create a PV manually; then, create a PVC to use that PV; and then, configure your pod to use that PVC on a mount-point in the file-system of the pod.
@@ -28,7 +30,7 @@ In this mode, you start by defining/creating a persistent volume claim (PVC). Th
 
 A **storage class** has actual physical storage underneath it - provided/managed by the cloud provider - or your cluster administrator; though, the storage class hides this information, and provides an abstraction layer for you. Normally, all cloud providers have a default storage class created for you, ready to be used.
 
-**Note:** Minikube provides a `standard` storageclass of type `hostPath` out of the box. Kubeadm based clusters do not. Remember, minikube is a "single-node" cluster, so a *storageclass* of type *hostpath* makes sense on it. On multi-node clusters using *hostpath* as a storageclass is stupidity.
+**Note:** Minikube provides a `standard` storageclass of type `hostPath` out of the box. Kubeadm based clusters do not. Remember, minikube is a "single-node" cluster, so a *storageclass* of type *hostpath* makes sense on it. On multi-node clusters using *hostpath* as a storageclass is bad idea - unless you know what you are doing.
 
 **Notes:**
 * I have referred to this method as **"Semi-Automatic"** or **"Semi-Dynamic"**, because, the PVC in this case is created manually, but the underlying PV is created automatically/dynamically. This is one of the  possible ways **to assign persistent storage to Deployments**. The other method is to manually create both the PV and PVC.
@@ -49,11 +51,12 @@ Good, so we have a storage class named `standard` , which we can use to create P
 Here is what storageclasses looks like on minikube: 
 ```
 $ kubectl get storageclass
-NAME                 PROVISIONER                AGE
-standard (default)   k8s.io/minikube-hostpath   19d
+
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  61d
 ```
 
-**Note:** It does not matter if you are using GCP, AWS, Azure, minikube, kubeadm, etc. Till the time you have a name for the storage class - which you can use in your PVC claims, you have no concern about the underlying physical storage. So, if you have a pvc claim definition file,(like the one below), and you are using it to create PVC on a **minikube** cluster, you can simply use the same PVC claim file to create a PVC with the same name on a **GCP** cluster. This abstraction allows you to *develop anywhere, deploy anywhere* !
+**Note:** It does not matter if you are using GCP, AWS, Azure, minikube, kubeadm, etc. Till the time you have a name for the storage class - which you can use in your PVC claims, you should not be concerned about the underlying physical storage. So, if you have a pvc claim definition file,(like the one below), and you are using it to create PVC on a **minikube** cluster, you can simply use the same PVC claim file to create a PVC with the same name on a **GCP** cluster. This abstraction allows you to *develop anywhere, deploy anywhere* !
 
 
 If you do not have a storage class, you can create/define it yourself. All you need to know is type of provisioner to use. Here is a definition file to create a storage class named **slow** on a GCP k8s cluster:
@@ -83,9 +86,6 @@ NAME                 PROVISIONER		AGE
 standard (default)   kubernetes.io/gce-pd	1d
 slow		             kubernetes.io/gce-pd	1h
 ```
-
-
-**Note** All commands below are executed on a kubernetes cluster running on GCP. For any other provider, refer to corresponding documentation.
 
 ### Create and use a PVC:
 
@@ -117,8 +117,9 @@ Check that the PVC exists and is bound:
 ```
 $ kubectl get pvc
 NAME        STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-pvc-nginx   Bound     pvc-e8a4fc89-2bae-11e8-b065-42010a8400e3   1Gi        RWO            standard       4m
+pvc-nginx   Bound     pvc-e8a4fc89-2bae-11e8-b065-42010a8400e3   100Mi      RWO            standard       4m
 ```
+
 **Note:** On GKE, the minimum size of a PVC for the standard storageclass is `1 GB`. If you create a PVC smaller then `1GB`, the resultant PVC will be of size `1GB`.
 
 
@@ -129,6 +130,7 @@ $ kubectl get pv
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS    CLAIM               STORAGECLASS   REASON    AGE
 pvc-e8a4fc89-2bae-11e8-b065-42010a8400e3   100Mi      RWO            Delete           Bound     default/pvc-nginx   standard                 5m
 ```
+
 **Note:** Above may be confusing, and demands some explanation. The `pvc-nginx` **PVC** above, is being created manually, using a `yaml` file; but, the related **PV** is being created automatically. Kubernetes cannot guess it's name (obviously), so it gives it a random/unique name/ID, which begins with **pvc**. This ID is reflected in the **VOLUME**  column of the `kubectl get pvc` command.
 
 
@@ -179,7 +181,7 @@ Create the deployment:
 
 ```
 $ kubectl apply -f support-files/nginx-deployment-with-persistent-storage.yaml
-deployment.extensions/nginx created
+deployment.apps/nginx created
 
 $ kubectl get deployments
 NAME               READY   UP-TO-DATE   AVAILABLE   AGE
@@ -187,44 +189,90 @@ nginx              1/1     1            1           59s
 
 $ kubectl get pods
 NAME                                READY   STATUS    RESTARTS   AGE
-nginx-7b874889c6-2zdxf              1/1     Running   0          61s
+nginx-5574988fcf-k5pd6              1/1     Running   0          61s
 ```
 
 
-After the deployment is created and the pod starts, you should examine it by using `kubectl describe pod nginx`, and look out for volume declarations. Optionally, create a service (of type ClusterIP) out of this deployment.
+After the deployment is created and the pod starts, you should examine it by using `kubectl describe pod nginx`, and look out for volume declarations. 
 
 ```
-$ kubectl expose deployment nginx --type ClusterIP --port 80
+$ kubectl describe pod nginx-5574988fcf-k5pd6 
+
+Name:             nginx-5574988fcf-k5pd6
+Namespace:        default
+Priority:         0
+Service Account:  default
+Node:             minikube/192.168.49.2
+Containers:
+  nginx:
+    Container ID:   docker://3a8fc8eb29c3214ea3ef9
+    Image:          nginx:1.9.1
+    Ports:          443/TCP, 80/TCP
+    Environment:  <none>
+    Mounts:
+      /usr/share/nginx/html from nginx-htmldir-volume (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-5lhfr (ro)
+
+... (omitted) ...
+
+Volumes:
+  nginx-htmldir-volume:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  pvc-nginx
+    ReadOnly:   false
+
+... (omitted) ...
+
+```
+
+Create a service (of type NodePort) out of this deployment.
+
+```
+$ kubectl expose deployment nginx --type NodePort --port 80,443
 service/nginx exposed
 
 $ kubectl get services
-NAME               TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)          AGE
-kubernetes         ClusterIP   10.4.0.1     <none>        443/TCP          26m
-nginx              ClusterIP   10.4.9.9     <none>        80/TCP           7s
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP                      61d
+nginx        NodePort    10.109.86.134   <none>        80:32657/TCP,443:31605/TCP   3s
+
 ```
 
+You can now access this service using the IP of the node and the node ports listed above.
 
-Run a multitool deployment if you don't have it running - to help you access nginx service:
 ```
-$ kubectl run multitool --image=praqma/network-multitool 
+[kamran@kworkhorse ~]$ curl 192.168.49.2:32657
+
+<html>
+<head><title>403 Forbidden</title></head>
+<body bgcolor="white">
+<center><h1>403 Forbidden</h1></center>
+<hr><center>nginx/1.9.1</center>
+</body>
+</html>
+```
+
+Or, un a multitool deployment if you don't have it running - to help you access nginx service:
+
+```
+$ kubectl run multitool --image=wbitt/network-multitool 
 ```
 
 Or:
 ```
 $ kubectl apply -f support-files/multitool-deployment.yaml 
-deployment.extensions/multitool created
+deployment.apps/multitool created
 
 
 $ kubectl get pods
 NAME                                READY   STATUS    RESTARTS   AGE
-multitool-69d6b7fc59-gbghn          1/1     Running   0          33s
+multitool-7f8c7df657-gb942          1/1     Running   0          33s
 ```
-
 
 Now you access the Nginx service using curl from the multitool pod. You should get a "403 Forbidden". This is because the PVC volume you mounted, is empty!
 
 ```
-$ kubectl exec -it multitool-<ID> bash
+$ kubectl exec -it multitool-7f8c7df657-gb942 -- /bin/bash
 
 bash-4.4# curl nginx
 <html>
@@ -243,33 +291,42 @@ Create a temporary file `/tmp/index.html` on your local computer/file-system, an
 ```
 $ echo 'Nginx with a mounted PVC!' > /tmp/index.html
 
-$ kubectl cp /tmp/index.html nginx-7b874889c6-2zdxf:/usr/share/nginx/html/
+$ kubectl cp /tmp/index.html nginx-5574988fcf-k5pd6:/usr/share/nginx/html/
 ```
 
 Verify that the file exists inside the nginx pod:
 
 ```
-$ kubectl exec nginx-7b874889c6-2zdxf ls /usr/share/nginx/html
+$ kubectl exec nginx-5574988fcf-k5pd6 ls /usr/share/nginx/html
 index.html
 lost+found
 ```
 
 
-Now, *exec* into the multitool container again, and run `curl` - again. This time, you should see the web page:
+Now, *exec* into the multitool container again, and run `curl` - again, or just access it over `nodeIP:port` from your local computer. This time, you should see the web page:
 
 ```
-$ kubectl exec -it multitool-69d6b7fc59-gbghn bash
+$ kubectl exec -it multitool-7f8c7df657-gb942 bash
 
 bash-4.4# curl nginx
 Nginx with a mounted PVC!
 bash-4.4#
 ```
 
+Or,
+
+```
+$ curl 192.168.49.2:32657
+
+Nginx with a mounted PVC!
+```
+
+
 Ok. Lets kill this nginx pod:
 
 ```
-$ kubectl delete pod nginx-6665c87fd8-cc8k9
-pod "nginx-6665c87fd8-cc8k9" deleted
+$ kubectl delete pod nginx-5574988fcf-k5pd6
+pod "nginx-5574988fcf-k5pd6" deleted
 ```
 
 Since the nginx pod was part of the deployment, it will be re-created, and the PVC - which is not deleted - will be re-mounted. 
@@ -278,19 +335,18 @@ Verify that the pod is up (notice a new pod id):
 
 ```
 $ kubectl get pods -o wide
-NAME                                READY     STATUS    RESTARTS   AGE       IP          NODE
-multitool-69d6b7fc59-gbghn          1/1       Running   0          10m       10.44.2.72   gke-dcn-cluster-2-default-pool-4955357e-txm7
-nginx-6665c87fd8-nh7bs              1/1       Running   0          1m        10.44.0.43   gke-dcn-cluster-2-default-pool-4955357e-8rnp
-```
-
-Again, from multitool, curl the new nginx pod. You should see the page you created in previous step - **not** `403 Forbidden`:
+NAME                         READY   STATUS    RESTARTS      AGE    IP            NODE       NOMINATED NODE   READINESS GATES
+multitool-7f8c7df657-gb942   1/1     Running   1 (92m ago)   144m   10.244.0.48   minikube   <none>           <none>
+nginx-5574988fcf-tz22q       1/1     Running   0             10s    10.244.0.54   minikube   <none>           <none>
 
 ```
-$ kubectl exec -it multitool-69d6b7fc59-gbghn bash
 
-bash-4.4# curl nginx
-<h1>Nginx with a mounted PVC!</h1>
-bash-4.4# 
+Again, from multitool, curl the new nginx pod. You should still be able to see the web page you created in previous step:
+
+```
+$ curl 192.168.49.2:32657
+
+Nginx with a mounted PVC!
 ```
 
 This has shown us that when a **pod** is deleted, (part of a Deployment) , the related PVC is not deleted. However, if the PVC is deleted manually, the underlying PV will be deleted automatically, because of the PV's "Reclaim Policy" set to "Delete".
@@ -304,26 +360,43 @@ kubectl patch pv <your-pv-name> -p '{"spec":{"persistentVolumeReclaimPolicy":"Re
 
 ## Pods in a Deployment "DO NOT" share the same PVC - when the StorageClass is based on `gce-pd`:
 
-Remember, we are on a kubernetes cluster in GKE. If I increase the replicas of this pod to `2`, in that case, the same PVC (`pvc-nginx`)  will **NOT** be used by both of these pods. Except for the first pod, the rest of the replicas will always remain in "ContainerCreating" state. This happens because the GCP persistent disk behind the PVC ,(being used by nginx deployment), can only be bound to one kubenretes node at one time. If the replicas land on multiple/different nodes - as is the case most of the time - then only one node will be able to mount the PVC and provide it to the nginx deployment.
+One a single-node Kubernetes cluster, such as minikube, if I increase the replicas of this pod to `2`, then the same PVC (`pvc-nginx`)  will be used by both of these pods, because the underlying PV is attached to the same node.
 
 ```
 $ kubectl scale deployment nginx --replicas=2
-deployment.extensions/nginx scaled
+deployment.apps/nginx scaled
+```
+
+```
+$ kubectl get pods -w
+NAME                         READY   STATUS    RESTARTS       AGE
+multitool-7f8c7df657-gb942   1/1     Running   1 (108m ago)   161m
+nginx-5574988fcf-7w2fz       1/1     Running   0              6s
+nginx-5574988fcf-tz22q       1/1     Running   0              16m
+```
+
+On a kubernetes cluster in GKE, if I increase the replicas of this pod to `2`, in that case, the same PVC (`pvc-nginx`)  will **NOT** be used by both of these pods. Except for the first pod, the rest of the replicas will always remain in "ContainerCreating" state. 
+
+This happens because the GCP persistent disk behind the PVC - being used by nginx deployment - can only be bound to one kubernetes node at one time. If the replicas land on multiple/different nodes - as is the case most of the time - then only one node will be able to mount the PVC and provide it to the nginx deployment.
+
+```
+$ kubectl scale deployment nginx --replicas=2
+deployment.apps/nginx scaled
 ```
 
 
 ```
 $ kubectl get pods -w
 NAME                         READY   STATUS              RESTARTS   AGE
-multitool-69d6b7fc59-gbghn   1/1     Running             0          8m57s
-nginx-7b874889c6-2zdxf       1/1     Running             0          9m15s
+multitool-7f8c7df657-gb942   1/1     Running             0          8m57s
+nginx-5574988fcf-k5pd6       1/1     Running             0          9m15s
 nginx-7b874889c6-w5lj9       0/1     ContainerCreating   0          17s
 
 
 $ kubectl get pods -o wide -w
 NAME                         READY   STATUS              RESTARTS   AGE     IP           NODE                                          NOMINATED NODE   READINESS GATES
-multitool-69d6b7fc59-gbghn   1/1     Running             0          9m16s   10.44.2.72   gke-dcn-cluster-2-default-pool-4955357e-txm7   <none>           <none>
-nginx-7b874889c6-2zdxf       1/1     Running             0          9m34s   10.44.0.43   gke-dcn-cluster-2-default-pool-4955357e-8rnp   <none>           <none>
+multitool-7f8c7df657-gb942   1/1     Running             0          9m16s   10.44.2.72   gke-dcn-cluster-2-default-pool-4955357e-txm7   <none>           <none>
+nginx-5574988fcf-k5pd6       1/1     Running             0          9m34s   10.44.0.43   gke-dcn-cluster-2-default-pool-4955357e-8rnp   <none>           <none>
 nginx-7b874889c6-w5lj9       0/1     ContainerCreating   0          36s     <none>       gke-dcn-cluster-2-default-pool-4955357e-txm7   <none>           <none>
 ```
 
@@ -333,7 +406,7 @@ If you check the events or `describe` the pod stuck in "ContainerCreating" mode,
 $ kubectl get events
 . . . 
 
-13m         Warning   FailedAttachVolume       pod/nginx-7b874889c6-w5lj9        Multi-Attach error for volume "pvc-0164c0f8-aad0-421b-a14d-e5d1ff0ee432" Volume is already used by pod(s) nginx-7b874889c6-2zdxf
+13m         Warning   FailedAttachVolume       pod/nginx-7b874889c6-w5lj9        Multi-Attach error for volume "pvc-0164c0f8-aad0-421b-a14d-e5d1ff0ee432" Volume is already used by pod(s) nginx-5574988fcf-k5pd6
 
 . . . 
 
@@ -349,7 +422,7 @@ Events:
   Type     Reason              Age                 From                     Message
   ----     ------              ----                ----                     -------
   Normal   Scheduled           17m                 default-scheduler        Successfully assigned default/nginx-7b874889c6-w5lj9 to gke-dcn-cluster-2-default-pool-4955357e-8rnp
-  Warning  FailedAttachVolume  17m                 attachdetach-controller  Multi-Attach error for volume "pvc-0164c0f8-aad0-421b-a14d-e5d1ff0ee432" Volume is already used by pod(s) nginx-7b874889c6-2zdxf
+  Warning  FailedAttachVolume  17m                 attachdetach-controller  Multi-Attach error for volume "pvc-0164c0f8-aad0-421b-a14d-e5d1ff0ee432" Volume is already used by pod(s) nginx-5574988fcf-k5pd6
   Warning  FailedMount         104s (x7 over 15m)  kubelet                  Unable to attach or mount volumes: unmounted volumes=[nginx-htmldir-volume], unattached volumes=[nginx-htmldir-volume default-token-qs2pf]: timed out waiting for the condition
 ```
 
@@ -357,21 +430,22 @@ Events:
 
 ### So what to do if you want to have multiple replicas?
 
-The reason you mount a PVC into a pod is that you are saving the **"disk state"** of your application. In Kubernetes terms, this a "statefulSet" type of application. **If this is a "single-replica" application**, and you are saving the state, then you can get away with "Deployment" object, but  you should really change it's type from "Deployment" to "StatefulSet". 
+The reason you mount a PVC into a pod is that you are saving the **"disk state"** of your application. In Kubernetes terms, this is a "statefulSet" type of application. **If this is a "single-replica" application**, and you are saving the state, then you can get away with "Deployment" object, but  you should really change it's type from "Deployment" to "StatefulSet". 
 
 If you want your application to have multiple replicas, and they all need to save their "disk state" to the same persistent storage, and you are on a public cloud provider, then there is no easy way to achieve this. You need a persistent storage, which can be mounted on multiple kubernetes nodes at the same time, such as volumes with modes ReadOnlyMany or ReadWriteMany; e.g NFS.
 
 If you convert this multiple-replica application to type "Statefulset", (and increase replicas), then remember that each replica will get a new/unique PVC, resulting in all your disk state spreading over multiple PVCs, eventually resulting in disaster. 
 
-In short, if you want to have multiple replicas, then you should re-think your application's design. Kubernetes Deployments should not be saving their state to disk. They are supposed to be lightweight.
+In short, if you want to have multiple replicas, then you should re-think your application's design. Kubernetes Deployments should not be saving their state to disk. They are supposed to be lightweight and most-importantly **stateless**.
 
 From Kubernetes documentation:
 
 > Even Deployments with one replica using ReadWriteOnce volume are not recommended. This is because the default Deployment strategy creates a second Pod before bringing down the first Pod on a recreate. The Deployment may fail in deadlock as the second Pod can't start because the ReadWriteOnce volume is already in use, and the first Pod won't be removed because the second Pod has not yet started. Instead, use a StatefulSet with ReadWriteOnce volumes. 
+
 * Ref: [https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes#deployments_vs_statefulsets](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes#deployments_vs_statefulsets)
 
 ## Pods in a Deployment share the same PVC - when the StorageClass is based on `hostPath`:
-**Note:** The following example will work only on minikube (a single-node cluster), which provides **hostPath** as the standard storageclass. 
+**Note:** The following example will work only on minikube (a single-node cluster), which provides **hostPath** as the standard storageclass..
 
 I re-created this scenario of nginx deployment using a PVC for it's persistent storage on a minikube cluster. There, it was interesting to see that pods inside a deployment, share the same PVC (if they use one). 
 
@@ -390,23 +464,23 @@ $ kubectl create -f support-files/pvc-nginx.yaml
 
 $ kubectl apply -f support-files/nginx-deployment-with-persistent-storage.yaml
 
-$ kubectl expose deployment nginx --type ClusterIP --port 80
+$ kubectl expose deployment nginx --type NodePort --port 80
 
-$ kubectl create deployment multitool --image=praqma/network-multitool
+$ kubectl create deployment multitool --image=wbitt/network-multitool
 ```
 
 Say, I increase the replicas of this pod to `2`, in that case, the same PVC (`pvc-nginx`)  will be used by both of these pods, and any content in the PVC will be shared/used by both of the pods.
 
 ```
 $ kubectl scale deployment nginx --replicas=2
-deployment.extensions/nginx scaled
+deployment.apps/nginx scaled
 ```
 
 ```
 $ kubectl get pods
 NAME                                READY   STATUS    RESTARTS   AGE
 multitool-5cb86d97cb-bq2t5          1/1     Running   0          8m13s
-nginx-7b874889c6-2zdxf              1/1     Running   0          22m
+nginx-5574988fcf-k5pd6              1/1     Running   0          22m
 nginx-7b874889c6-5lx7x              1/1     Running   0          16s
 ```
 
@@ -437,8 +511,10 @@ bash-5.0#
 ```
 
 Activity in logs:
+
 ```
-$ kubectl logs -f nginx-7b874889c6-2zdxf
+$ kubectl logs -f nginx-5574988fcf-k5pd6
+
 10.0.0.13 - - [24/Feb/2020:22:24:51 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
 10.0.0.13 - - [24/Feb/2020:22:32:30 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
 10.0.0.13 - - [24/Feb/2020:22:32:31 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
@@ -449,6 +525,7 @@ $ kubectl logs -f nginx-7b874889c6-2zdxf
 
 ```
 $ kubectl logs -f nginx-7b874889c6-5lx7x
+
 10.0.0.13 - - [24/Feb/2020:22:32:32 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
 10.0.0.13 - - [24/Feb/2020:22:32:33 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
 10.0.0.13 - - [24/Feb/2020:22:32:37 +0000] "GET / HTTP/1.1" 200 35 "-" "curl/7.67.0" "-"
@@ -459,7 +536,7 @@ $ kubectl logs -f nginx-7b874889c6-5lx7x
 It works!
 
 
-### Why it worked?
+### Why did it work?
 
 The reason is simple. minikube is single-node cluster, i.e. there is only one node. Also, the StorageClass "standard" is created on top of a "hostPath", which is a single directory on this kubernetes node. This directory can definitely be used by multiple pods and multiple replicas of a Deployment (all created on the same node) in read-write-many (RWX) mode. That is why it works in this situation.
 
@@ -470,7 +547,7 @@ If only the deployment is deleted, the PVC and it's related PV stays, because th
 
 ```
 $ kubectl delete deployment nginx
-deployment.extensions "nginx" deleted
+deployment.apps "nginx" deleted
 
 $ kubectl get pvc
 NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
@@ -485,7 +562,7 @@ Lets re-create the nginx deployment, and see if we can get our data back , or no
 
 ```
 $ kubectl apply -f support-files/nginx-persistent-storage.yaml 
-deployment.extensions/nginx created
+deployment.apps/nginx created
 
 $ kubectl get pods
 NAME                                READY   STATUS    RESTARTS   AGE
@@ -525,7 +602,7 @@ Lets delete the deployment, and then delete the PVC.
 
 ```
 $ kubectl delete deployment nginx
-deployment.extensions "nginx" deleted
+deployment.apps "nginx" deleted
 
 $ kubectl delete pvc pvc-nginx
 persistentvolumeclaim "pvc-nginx" deleted
@@ -543,6 +620,7 @@ pvc-5ffefad0-5751-11ea-b461-42010aa601ba   1Gi        RWO            Retain     
 ```
 
 To point out an important fact later-on, lets describe this surviving PV. The areas to focus are "Status", "Claim:" and "Capacity:"
+
 ```
 $ kubectl describe pv pvc-5ffefad0-5751-11ea-b461-42010aa601ba
 
@@ -597,13 +675,13 @@ pvc-048b565e-5759-11ea-b461-42010aa601ba   1Gi        RWO            Delete     
 pvc-5ffefad0-5751-11ea-b461-42010aa601ba   1Gi        RWO            Retain           Released   default/pvc-nginx   standard                54m
 ```
 
-Even though the PVC being created had the same name as before (pvc-nginx), it still did not re-use the existing PV, even though the existing PV had `default/pvc-nginx` in the `Claim:` field, and was in `Released` state. Instead it created a new one with a new PV ID!: `pvc-048b565e-5759-11ea-b461-42010aa601ba`.
+Even though the PVC being created had the same name as before (pvc-nginx), it still did not re-use the existing PV, even though the existing PV had `default/pvc-nginx` in the `Claim:` field, and was in `Released` state. Instead it created a new one with a new PV ID!, which is: `pvc-048b565e-5759-11ea-b461-42010aa601ba`.
 
 Lets re-create the deployment and see what does it have under it's `/usr/share/nginx/html` on which this PVC is mounted.
 
 ```
 $ kubectl apply -f support-files/nginx-persistent-storage.yaml
-deployment.extensions/nginx created
+deployment.apps/nginx created
 ```
 
 The service exists, so we can `exec` into the multitool container and access the nginx service.
@@ -641,7 +719,7 @@ This is explained here: [https://github.com/kubernetes/kubernetes/issues/48609](
 > When you delete a PVC, corresponding PV becomes Released. This PV can contain sensitive data (say credit card numbers) and therefore nobody can ever bind to it, even if it is a PVC with the same name and in the same namespace as the previous one - who knows who's trying to steal the data!
 
 
-So, if you want to keep the data , don't delete the PVC. In this way, no matter how many times you create or delete the deployment, the deployment will re-use the same PVC. Also, the PVC creation and deletion should be outside the development cycle. This adds some load on the people responsible for the kubernetes cluster. Each time developers wants persistent storage for their deployments, they will need to do this manually.
+So, if you want to keep/retain the data , don't delete the PVC. In this way, no matter how many times you create or delete the deployment, the deployment will re-use the same PVC. Also, the PVC creation and deletion should be outside the development cycle. This adds some load on the people responsible for the kubernetes cluster. Each time developers wants persistent storage for their deployments, they will need to do this manually.
 
 **Notes:**
 * Deployments and ReplicationControllers are meant for stateless usage and are rather lightweight.
@@ -654,7 +732,7 @@ If you really want to automate this part and really want a solid persistent-stor
 
 
 
------------------
+------
 
 
 ## Fully-Automatic / Fully-Dynamic provisioning - with StatefulSets:
@@ -668,29 +746,35 @@ It is also important to note that a PVC created by a StatefulSet pod is created 
 ### Lets run Nginx as StatefulSet:
 
 ```
-$ kubectl apply -f support-files/nginx-statefulset.yaml 
+$ kubectl apply -f support-files/nginx-statefulset.yaml
+
 statefulset.apps/nginx-statefulset created
+service/nginx-statefulset created
 ```
 
 ```
 $ kubectl get statefulset
 NAME                READY   AGE
 nginx-statefulset   1/1     33s
-
-$ kubectl get pods
-NAME                         READY   STATUS    RESTARTS   AGE
-multitool-5cb86d97cb-bq2t5   1/1     Running   0          108m
-nginx-statefulset-0          1/1     Running   0          36s
 ```
 
+```
+$ kubectl get pods
+NAME                         READY   STATUS    RESTARTS       AGE
+multitool-7f8c7df657-gb942   1/1     Running   1 (123m ago)   175m
+nginx-5574988fcf-7w2fz       1/1     Running   0              14m
+nginx-5574988fcf-tz22q       1/1     Running   0              31m
+nginx-statefulset-0          1/1     Running   0              11s
+```
 
 Notice that the nginx-statefulset's pod does not have a random unique ID in it's name. Instead, it is the ordinal number `0` , indicating the first (and only) pod in this statefulset.
 
 ```
-$ kubectl get services
-NAME                TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
-kubernetes          ClusterIP   10.4.0.1     <none>        443/TCP   137m
-nginx-statefulset   ClusterIP   10.4.1.226   <none>        80/TCP    7m46s
+$ kubectl get svc
+NAME                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+kubernetes          ClusterIP   10.96.0.1       <none>        443/TCP                      62d
+nginx               NodePort    10.109.86.134   <none>        80:32657/TCP,443:31605/TCP   46m
+nginx-statefulset   NodePort    10.108.89.251   <none>        80:30208/TCP                 2m4s
 ```
 
 Check the PVCs and PVs:
@@ -708,11 +792,11 @@ pvc-857123f5-5762-11ea-b461-42010aa601ba   1Gi        RWO            Delete     
 Notice the PVC's name is a combination of the value of `volumeClaimTemplates` and the name of the statefulset pod requesting this PVC. i.e. `nginx-persistent-storage-nginx-statefulset-0`
 
 
-This is a new PVC (obviously empty!), so if we access this nginx service from multitool, it will show a "403 Forbidden" error instead of serving any content.
+This is a new PVC (obviously empty!), so if we access this nginx service, it will show a "403 Forbidden" error instead of serving any content.
 
 ```
-$ kubectl exec -it multitool-5cb86d97cb-bq2t5 bash
-bash-5.0# curl 10.4.1.226
+$ curl 192.168.49.2:30208
+
 <html>
 <head><title>403 Forbidden</title></head>
 <body bgcolor="white">
@@ -720,10 +804,8 @@ bash-5.0# curl 10.4.1.226
 <hr><center>nginx/1.9.1</center>
 </body>
 </html>
-bash-5.0# 
-```
 
-Exit Multitool.
+```
 
 Lets copy in our `index.html` file into this pod.
 
@@ -733,10 +815,10 @@ $ kubectl cp /tmp/index.html nginx-statefulset-0:/usr/share/nginx/html/
 
 Now, access it again using the multitool:
 ```
-$ kubectl exec -it multitool-5cb86d97cb-bq2t5 bash
-bash-5.0# curl 10.4.1.226
-<h1>Nginx with a mounted PVC!</h1>
-bash-5.0# 
+$ curl 192.168.49.2:30208
+
+Nginx with a mounted PVC!
+
 ```
 
 ### Lets delete the Nginx statefulset:
@@ -785,14 +867,12 @@ NAME                                       CAPACITY   ACCESS MODES   RECLAIM POL
 pvc-857123f5-5762-11ea-b461-42010aa601ba   1Gi        RWO            Delete           Bound      default/nginx-persistent-storage-nginx-statefulset-0   standard                16m
 ```
 
-Notice there are no new PVCs. Lets see if this is the same PVC, which had our index.html in it. We check that by accessing nginx service through multitool.
+Notice there are no new PVCs. Lets see if this is the same PVC, which had our index.html in it. We check that by accessing nginx service, again.
 
 ```
-$ kubectl exec -it multitool-5cb86d97cb-bq2t5 bash
+$ curl 192.168.49.2:30208
 
-bash-5.0# curl 10.4.1.226
-<h1>Nginx with a mounted PVC!</h1>
-bash-5.0# 
+Nginx with a mounted PVC!
 ```
 
 
@@ -808,7 +888,6 @@ $ kubectl scale statefulset nginx-statefulset --replicas=2
 statefulset.apps/nginx-statefulset scaled
 ```
 
-
 ```
 $ kubectl get pods
 NAME                         READY   STATUS    RESTARTS   AGE
@@ -816,6 +895,7 @@ multitool-5cb86d97cb-bq2t5   1/1     Running   0          129m
 nginx-statefulset-0          1/1     Running   0          5m18s
 nginx-statefulset-1          1/1     Running   0          28s
 ```
+
 ```
 $ kubectl get pvc
 NAME                                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
@@ -832,9 +912,7 @@ pvc-857123f5-5762-11ea-b461-42010aa601ba   1Gi        RWO            Delete     
 If we run `curl` in a loop, in multitool, we should be able to see that both pods belonging to same nginx-statefulset **do not share** the PVCs. i.e. each one has it's own PVC. One of them has our index.html in it, the other one has empty PVC, and will show us "403 Forbidden" error.
 
 ```
-kubernetes-katas]$ kubectl exec -it multitool-5cb86d97cb-bq2t5 bash
-
-bash-5.0# for i in $(seq 1 4); do curl 10.4.1.226 ; echo  ; sleep 1; done
+$ for i in $(seq 1 4); do curl 192.168.49.2:30208 ; echo  ; sleep 1; done
 
 <html>
 <head><title>403 Forbidden</title></head>
@@ -845,7 +923,9 @@ bash-5.0# for i in $(seq 1 4); do curl 10.4.1.226 ; echo  ; sleep 1; done
 </html>
 <html>
 
-<h1>Nginx with a mounted PVC!</h1>
+
+Nginx with a mounted PVC!
+
 
 <html>
 <head><title>403 Forbidden</title></head>
@@ -855,9 +935,7 @@ bash-5.0# for i in $(seq 1 4); do curl 10.4.1.226 ; echo  ; sleep 1; done
 </body>
 </html>
 
-<h1>Nginx with a mounted PVC!</h1>
-
-bash-5.0#
+Nginx with a mounted PVC!
 ```
 
 ### Conclusion:
