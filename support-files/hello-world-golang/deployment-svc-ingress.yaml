@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world-golang
+  labels:
+    app: hello-world-golang
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-world-golang
+  template:
+    metadata:
+      labels:
+        app: hello-world-golang
+    spec:
+      containers:
+      - name: hello-world-golang
+        image: wbitt/hello-world-golang
+        ports:
+        - containerPort: 4444
+        env:
+        - name: GREETING
+          value: Hello
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-golang
+  labels:
+    name: hello-world-golang
+    app: hello-world-golang
+spec:
+  ports:
+    - port: 4444
+  selector:
+    app: hello-world-golang
+
+---
+
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hello-world-golang-http
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+  # - match: Host(`hello-world-golang.gcp.aclab.me`) && PathPrefix(`/notls`)
+  - match: Host(`hello-world.gcp.aclab.me`)
+    kind: Rule
+    services:
+    - name: hello-world-golang
+      port: 4444
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hello-world-golang-https
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  # - match: Host(`hello-world-golang.gcp.aclab.me`) && PathPrefix(`/tls`)
+  - match: Host(`hello-world.gcp.aclab.me`)
+    kind: Rule
+    services:
+    - name: hello-world-golang
+      port: 4444
+  tls:
+    certResolver: letsencrypt
