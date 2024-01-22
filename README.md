@@ -56,8 +56,8 @@ You may encounter the same limitations, if you are running a cluster of your own
 * [07-environment-variables-secrets-configmaps.md](07-environment-variables-secrets-configmaps.md)
 * [08-storage-basic.md](08-storage-basic.md)
 * [08-storage-detailed.md](08-storage-detailed.md)
-* [09-ingress-gke.md](09-ingress-gke.md)
-* [09-ingress-nginx.md](09-ingress-nginx.md)
+* [09-ingress-gke.md](09-ingress-gke.md)  **--> Not updated / don't use**
+* [09-ingress-nginx.md](09-ingress-nginx.md) **--> Not updated / don't use**
 * [09-ingress-traefik.md](09-ingress-traefik.md)
 * [10-healthchecks.md](10-healthchecks.md)
 * [11-helm-package-manager.md](11-helm-package-manager.md)
