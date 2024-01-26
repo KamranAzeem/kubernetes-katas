@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+    tier: database
+spec:
+  type: ClusterIP  
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+    tier: database
+  clusterIP: None 
+
+
+---
+
+
+apiVersion: apps/v1
+
+kind: StatefulSet
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+    tier: database
+spec:
+  serviceName: "mysql"
+  replicas: 1
+  selector:
+    matchLabels: 
+      app: mysql
+      tier: database
+  template:
+    metadata:
+      labels:
+        app: mysql
+        tier: database
+    spec:
+      containers:
+      - image: mariadb:10
+        name: mysql 
+
+        args:
+        - "--ignore_db_dirs=lost+found"
+
+        env:
+        - name: TZ
+          value: "Europe/London" 
+
+        - name: MYSQL_ROOT_PASSWORD
+          value: "password"
+
+        ports:
+        - containerPort: 3306
+          name: mysql
+
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 2048Mi
+
+        volumeMounts:
+
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+
+
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+
+# Create a database in this db server instance, and create a few records:
+# ------------
+# create user 'wordpress'@'%' identified by  'wordpress';
+# GRANT all PRIVILEGEs ON wordpress.* TO 'wordpress'@'%';
+# flush privileges;
+# insert into wp_users values(1,'kamran');
+# insert into wp_users values(2,'john');
+# insert into wp_users values(1,'david');

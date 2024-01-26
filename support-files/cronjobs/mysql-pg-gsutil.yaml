@@ -1,0 +1,69 @@
+# This file is not used directly with cronjob.
+#   It is impossible to troubleshoot a pod/container of a cronjob,
+#   because it starts and exits quickly.
+#   So, to see that your cronjob pod setup is correct,
+#   you use a simple regular pod to do the exact same thing,
+#   and see if secrets, configmaps, and volumes are mounted properly, etc.
+#   Only after that you setup your cronjob.yaml 
+#
+
+
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: mysql-pg-gsutil
+
+spec:
+
+  volumes:
+    - name: gcp-key-volume
+      secret:
+        secretName: gcp-key-json
+
+    - name: mysql-backup-script-volume
+      configMap:
+        # Provide the name of the ConfigMap containing the files you want
+        # to add to the container
+        name: mysql-backup-script
+        defaultMode: 0755
+
+  containers:
+    - name: mysql-pg-gsutil
+      image: docker.io/wbitt/mysql-pg-backup-to-gcs
+      imagePullPolicy: IfNotPresent
+      command: [ "sleep" ]
+      args: [ "infinity" ]
+
+      env:
+        - name: MYSQLHOST
+          value: "mysql.default.svc.cluster.local"
+
+        - name: MYSQLPORT
+          value: "3306"
+
+        - name: MYSQLDBNAME
+          value: "wordpress"
+          
+        - name: MYSQLUSER
+          value: "wordpress"
+
+        - name: MYSQLPASSWORD
+          value: "wordpress"
+
+        - name: GCSBUCKET
+          value: "gs://mysql-backups-aclab-me"
+
+        - name: GCPPROJECTID
+          value: "trainingvideos"
+
+      volumeMounts:
+        - name: gcp-key-volume
+          readOnly: true
+          mountPath: "/root/gcp-key.json"
+          subPath: gcp-key.json
+
+
+        - name: mysql-backup-script-volume
+          mountPath: "/root/mysql-dump-to-gcs.sh"
+          subPath: mysql-dump-to-gcs.sh

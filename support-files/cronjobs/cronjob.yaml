@@ -1,33 +1,42 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: mysql-db-backup-to-s3
-  namespace: crontab
+  name: mysql-db-backup-to-gcs
+  #namespace: crontab
+  namespace: default
   # labels will not be applied by kubernetes
   # instead a special label "job-name"
   # is created at creation time, which can be used 
   # in collaboration with the names provided by "kubectl get jobs"
   # kubectl logs -l job-name=mysql-db-backup-to-s3-28091266
   labels:
-    jobrole: mysql-db-backup-to-s3
+    jobrole: mysql-db-backup-to-gcs
 
 spec:
-  schedule: "0 0 */1 * *"
+  #schedule: "0 0 */1 * *"
+
+  schedule: "*/2 * * * *"
+
   concurrencyPolicy: Forbid
+
   jobTemplate:
     spec:
       template:
         spec:
+
+          restartPolicy: OnFailure
+
           containers:
+
           - name: mysql
             image: mysql:10
             imagePullPolicy: IfNotPresent
 
             command:
-            - "/scripts/mysql-dump-to-s3.sh"
+            - "/root/mysql-dump-to-gcs.sh"
 
-            args:
-            - "$(MYSQLHOST)"
+            # args:
+            # - "$(MYSQLHOST)"
             # The environment variable appears in parentheses, "$(VAR)". 
             # This is required for the variable to be expanded 
             #   in either the "command" or "args" field.
@@ -41,56 +50,41 @@ spec:
 
             - name: MYSQLDBNAME
               value: "wordpress"
-
-            - name: GCSBUCKETNAME
-              value: "mysql-backups-wbitt-com"
-
+              
             - name: MYSQLUSER
-              valueFrom:
-                secretKeyRef:
-                  name: credentials-mysql-db
-                  key: DB_USERNAME
+              value: "wordpress"
 
             - name: MYSQLPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: credentials-mysql-db
-                  key: DB_PASSWORD
+              value: "wordpress"
 
+            - name: GCSBUCKET
+              value: "gs://mysql-backups-aclab-me"
 
-            # Google Cloud Storage KEY (json key pre-encoded in base64)
-            - name: GCSKEY
-              valueFrom:
-                secretKeyRef:
-                  name: credentials-gcs
-                  key: GCS_KEY
-
+            - name: GCPPROJECTID
+              value: "trainingvideos"
 
 
             volumeMounts:
-            - name: scripts
-              mountPath: "/scripts"
 
-            - name: mysql-dump-script-volume
-              mountPath: /scripts/mysql-dump-to-s3.sh
-              subPath: mysql-dump-to-s3.sh
-
-            - name: gcs-key-volume
-              mountPath: /mnt/gcs-key.json.base64
-              subPath: gcs-key.json.base64
+            - name: gcp-key-volume
+              readOnly: true
+              mountPath: "/root/gcp-key.json"
+              subPath: gcp-key.json
 
 
-          restartPolicy: OnFailure
-
-          
+            - name: mysql-backup-script-volume
+              mountPath: "/root/mysql-dump-to-gcs.sh"
+              subPath: mysql-dump-to-gcs.sh
+         
           volumes:
-          - name: scripts
-            emptyDir: {}
 
+          - name: gcp-key-volume
+            secret:
+              secretName: gcp-key-json
 
-          - name: mysql-dump-script-volume
+          - name: mysql-backup-script-volume
             configMap:
               # Provide the name of the ConfigMap containing the files you want
               # to add to the container
-              name: mysql-dump-script
+              name: mysql-backup-script
               defaultMode: 0755
