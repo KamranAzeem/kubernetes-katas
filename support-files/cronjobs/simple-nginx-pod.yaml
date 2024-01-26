@@ -1,0 +1,69 @@
+# This file is not used directly with cronjob.
+#   It is impossible to troubleshoot a pod/container of a cronjob,
+#   because it starts and exits quickly.
+#   So, to see that your cronjob pod setup is correct,
+#   you use a simple regular pod to do the exact same thing,
+#   and see if secrets, configmaps, and volumes are mounted properly, etc.
+#   Only after that you setup your cronjob.yaml 
+#
+
+
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: nginx
+  namespace: db-backup
+
+spec:
+  containers:
+    - name: nginx
+      image: wbitt/network-multitool
+      imagePullPolicy: IfNotPresent
+
+      env:
+        - name: MYSQLHOST
+          value: "mysql.default.svc.cluster.local"
+
+        - name: MYSQLPORT
+          value: "3306"
+
+        - name: MYSQLUSER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-credentials
+              key: username
+
+        - name: MYSQLPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-credentials
+              key: password
+
+      #~ command:
+      #~ - /scripts/mysql-backup.sh
+      #~ - ${MYSQLHOST}
+      #~ - ls
+      #~ - -lh 
+      #~ - /scripts/mysql-backup.sh
+
+      volumeMounts:
+        - name: scripts
+          mountPath: "/scripts"
+
+        - name: mysql-backup-script-volume
+          mountPath: "/scripts/mysql-backup.sh"
+          subPath: mysql-backup.sh
+
+
+  volumes:
+    - name: scripts
+      emptyDir: {}
+
+
+    - name: mysql-backup-script-volume
+      configMap:
+        # Provide the name of the ConfigMap containing the files you want
+        # to add to the container
+        name: mysql-backup-script
+        defaultMode: 0755

@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-db-backup-to-s3
+  namespace: crontab
+  # labels will not be applied by kubernetes
+  # instead a special label "job-name"
+  # is created at creation time, which can be used 
+  # in collaboration with the names provided by "kubectl get jobs"
+  # kubectl logs -l job-name=mysql-db-backup-to-s3-28091266
+  labels:
+    jobrole: mysql-db-backup-to-s3
+
+spec:
+  schedule: "0 0 */1 * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: mysql
+            image: mysql:10
+            imagePullPolicy: IfNotPresent
+
+            command:
+            - "/scripts/mysql-dump-to-s3.sh"
+
+            args:
+            - "$(MYSQLHOST)"
+            # The environment variable appears in parentheses, "$(VAR)". 
+            # This is required for the variable to be expanded 
+            #   in either the "command" or "args" field.
+
+            env:
+            - name: MYSQLHOST
+              value: "mysql.default.svc.cluster.local"
+
+            - name: MYSQLPORT
+              value: "3306"
+
+            - name: MYSQLDBNAME
+              value: "wordpress"
+
+            - name: GCSBUCKETNAME
+              value: "mysql-backups-wbitt-com"
+
+            - name: MYSQLUSER
+              valueFrom:
+                secretKeyRef:
+                  name: credentials-mysql-db
+                  key: DB_USERNAME
+
+            - name: MYSQLPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: credentials-mysql-db
+                  key: DB_PASSWORD
+
+
+            # Google Cloud Storage KEY (json key pre-encoded in base64)
+            - name: GCSKEY
+              valueFrom:
+                secretKeyRef:
+                  name: credentials-gcs
+                  key: GCS_KEY
+
+
+
+            volumeMounts:
+            - name: scripts
+              mountPath: "/scripts"
+
+            - name: mysql-dump-script-volume
+              mountPath: /scripts/mysql-dump-to-s3.sh
+              subPath: mysql-dump-to-s3.sh
+
+            - name: gcs-key-volume
+              mountPath: /mnt/gcs-key.json.base64
+              subPath: gcs-key.json.base64
+
+
+          restartPolicy: OnFailure
+
+          
+          volumes:
+          - name: scripts
+            emptyDir: {}
+
+
+          - name: mysql-dump-script-volume
+            configMap:
+              # Provide the name of the ConfigMap containing the files you want
+              # to add to the container
+              name: mysql-dump-script
+              defaultMode: 0755
