@@ -1,8 +1,34 @@
 # Service Discovery and Loadbalancing
 In almost every Kubernetes cluster, there is an addon called CoreDNS (previously KubeDNS), which provides service discovery within the cluster, using DNS mechanism. Every time a *service* is created in kubernetes cluster, it is registered in CoreDNS with the name of the service, it's ClusterIP. e.g. `nginx.default.svc.cluster.local` . There will be more on this later. Each service will have a name, a clusterIP, and also the list of backends linked with this service. 
 
-The kubernetes *service* also acts as an internal load balancer, when the service has more than one endpoints. e.g. A nginx deployment can have four replicas. When exposed as a service, the service will have four endpoints. When this service is accessed by a client (a pod or any other process), the service does load balancing between these endpoints. 
+The kubernetes *service* also acts as an internal load balancer, when the service has more than one endpoints. e.g. A nginx deployment can have four replicas. When exposed as a service, the service will have four endpoints, which are the IP addresses of the pods. When this service is accessed by a client (a pod or any other process), the service does load balancing between these endpoints. A service and it's endpoints are shown below:
 
+
+```
+$ kubectl create deployment nginx --image=nginx:1.9 --replicas=4
+
+$ kubectl get deployments
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+nginx     4/4     4            4           5m14s
+
+$ kubectl expose deployment nginx --port=80
+
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.109.0.1     <none>        443/TCP   9d
+nginx        ClusterIP   10.109.2.103   <none>        80/TCP    16s
+
+
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.109.0.1     <none>        443/TCP   9d
+nginx        ClusterIP   10.109.2.103   <none>        80/TCP    16s
+
+$ kubectl get endpoints
+NAME         ENDPOINTS                                               AGE
+kubernetes   10.154.0.10:443                                         9d
+nginx        10.44.1.21:80,10.44.2.19:80,10.44.2.20:80 + 1 more...   31s
+```
 
 ## Types of a kubernetes service:
 To access the actual process/service inside any given pod (e.g. nginx web service), we need to *expose* the related deployment as a kubernetes *service*. We have three main ways of exposing the deployment , or in other words, we have three ways to define a *service*. We can access these three types of services in three different ways. The three types of services are:
@@ -12,13 +38,15 @@ To access the actual process/service inside any given pod (e.g. nginx web servic
 * LoadBalancer
 
 ### Service type: ClusterIP
-Expose the deployment as a service - type=ClusterIP:
+Lets expose the deployment as a service - type=ClusterIP:
+
 ```
 $ kubectl expose deployment nginx --port 80 --type ClusterIP
 service "nginx" exposed
 ```
 
 Check the list of services:
+
 ```
 $ kubectl get services
 NAME         TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE

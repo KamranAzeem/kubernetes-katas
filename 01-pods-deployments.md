@@ -42,8 +42,65 @@ $ kubectl  delete pod multitool
 pod "multitool" deleted
 ```
 
-When you delete a pod (which is not a member of a deployment), it is not recreated.
+When you delete a pod - which is not a member of a deployment - it is not recreated.
 
+
+### Creating a standalone pod using YAML:
+Here is how you would create a standalone pod.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: standalone-nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+```
+
+Save the above few lines of code as a yaml file, and use `kubectl create -f <filename>` to create this pod.
+
+```
+$ kubectl create -f support-files/standalone-nginx-pod.yaml 
+pod "standalone-nginx-pod" created
+
+$ kubectl get pods
+NAME                   READY     STATUS    RESTARTS   AGE
+standalone-nginx-pod   1/1       Running   0          4s
+$
+```
+
+The example above will work with container images, which have some sort of daemon/service process running as their entrypoint. If you want to run something which does not have a **service process** in the container image, you can pass it a custom command, such as shown below: 
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: standalone-busybox-pod
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']
+
+```
+The above code will create a pod, which will go into a sleep for 3600 seconds ( one hour), and will exit (die) silently. Good to know for troubleshooting/diagnostics.
+
+```
+$ kubectl create -f support-files/standalone-busybox-pod.yaml 
+pod "standalone-busybox-pod" created
+$
+
+$ kubectl get pods
+NAME                     READY     STATUS    RESTARTS   AGE
+standalone-busybox-pod   1/1       Running   0          30s
+$
+```
+
+
+
+### Create deployment using `kubectl create` command:
 Next, create a deployment. A deployment in-turn creates a replicaset, which in-turn creates the pod(s). 
 
 ```
@@ -150,7 +207,8 @@ rs/nginx-1480123054       1         1         1         14s
 ```
 
 
-## Alternate / preffered way to deploy pods:
+### Create deployment using YAML manifest:
+
 You can also use the `nginx-simple-deployment.yaml` file to create the same nginx deployment. The file is in suport-files directory of this repo. However before you execute the command shown below, note that it will try to create a deployment with the name **nginx**. If you already have a deployment named **nginx** running, as done in the previous step, then you will need to delete that first.
 
 Delete the existing deployment using the following command:
@@ -240,58 +298,6 @@ multitool-3148954972-k8q06   1/1       Running   0          1h
 nginx-431080787-tx5m7        1/1       Running   0          12s
 ```
 
-## Creating a standalone pod:
-Often times you will need to simply create a pod, without making it a member of a deployment or anything else. For those instances, here is how you would create a standalone pod.
-
-```
-apiVersion: v1
-kind: Pod
-metadata:
-  name: standalone-nginx-pod
-spec:
-  containers:
-  - name: nginx
-    image: nginx:alpine
-```
-
-Save the above few lines of code as a yaml file, and use `kubectl create -f <filename>` to create this pod.
-
-```
-$ kubectl create -f support-files/standalone-nginx-pod.yaml 
-pod "standalone-nginx-pod" created
-
-$ kubectl get pods
-NAME                   READY     STATUS    RESTARTS   AGE
-standalone-nginx-pod   1/1       Running   0          4s
-$
-```
-
-The example above will work with container images, which have some sort of daemon/service process running as their entrypoint. If you want to run something which does not have a **service process** in the container image, you can pass it a custom command, such as shown below: 
-
-```
-apiVersion: v1
-kind: Pod
-metadata:
-  name: standalone-busybox-pod
-spec:
-  containers:
-  - name: busybox
-    image: busybox
-    command: ['sh', '-c', 'echo Hello Kubernetes! && sleep 3600']
-
-```
-The above code will create a pod, which will go into a sleep for 3600 seconds ( one hour), and will exit (die) silently. Good to know for troubleshooting/diagnostics.
-
-```
-$ kubectl create -f support-files/standalone-busybox-pod.yaml 
-pod "standalone-busybox-pod" created
-$
-
-$ kubectl get pods
-NAME                     READY     STATUS    RESTARTS   AGE
-standalone-busybox-pod   1/1       Running   0          30s
-$
-```
 
 PS. I have an excellent multitool for network (and container) troubleshooting. It is called `wbitt/network-multitool`, and it runs nginx web server, eliminating a need to pass any custom commands. You can run it like this:
 
@@ -343,6 +349,63 @@ Address: 2001:4998:44:41d::4
 $
 ```
 
+## Deployments with multiple copies/replicas of the same pod:
+
+```
+$ kubectl create deployment nginx --image=nginx:1.9 --replicas=3
+deployment.apps/nginx created
+```
+
+```
+$ kubectl get deployments
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+nginx     3/3     3            3           13s
+```
+
+```
+$ kubectl get pods
+NAME                       READY   STATUS    RESTARTS   AGE
+nginx-747c6fb789-fmh5k     1/1     Running   0          17s
+nginx-747c6fb789-mcp48     1/1     Running   0          17s
+nginx-747c6fb789-v2mq6     1/1     Running   0          17s
+```
+
+
+
+### Create multiple copies/replicas of the same pod, using YAML manifest:
+
+
+```
+$ cat nginx-simple-deployment-with-multiple-replicas.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.9
+        ports:
+        - containerPort: 80
+```
+
+```
+$ kubectl apply -f nginx-simple-deployment-with-multiple-replicas.yaml
+```
+
+
 ## Network-multitool for troubleshooting:
 We have a very good container image with lots of tools for troubleshooting the most common system/network problems. We will be using it extensively throughout this course. It is named `wbitt/network-multitool` .
 
@@ -385,7 +448,7 @@ bash-4.4# dig +short kubernetes.default.svc.cluster.local
 bash-4.4# 
 ```
 
-## Accessing the applications running inside pods:
+## Accessing the application running inside pods:
 Now the question comes: how can we access nginx webserver at port 80 in this pod? For now we can do it from within the cluster. Later in the course, we do it by using *kubernetes services*. 
 
 To access any pod from within the cluster, first we need to know the IP address of that pod. i.e. nginx pod in this case. We use the `-o wide` parameters with the `get pods` command:
