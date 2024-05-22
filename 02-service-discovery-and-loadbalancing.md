@@ -13,16 +13,11 @@ nginx     4/4     4            4           5m14s
 
 $ kubectl expose deployment nginx --port=80
 
-$ kubectl get svc
+$ kubectl get services
 NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
 kubernetes   ClusterIP   10.109.0.1     <none>        443/TCP   9d
 nginx        ClusterIP   10.109.2.103   <none>        80/TCP    16s
 
-
-$ kubectl get svc
-NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-kubernetes   ClusterIP   10.109.0.1     <none>        443/TCP   9d
-nginx        ClusterIP   10.109.2.103   <none>        80/TCP    16s
 
 $ kubectl get endpoints
 NAME         ENDPOINTS                                               AGE

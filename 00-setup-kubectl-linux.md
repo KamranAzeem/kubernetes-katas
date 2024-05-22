@@ -1,4 +1,4 @@
-# Setup kubectl
+# Setup kubectl - for correct context:
 
 It is assumed that you are provided with a kubernetes cluster by the instructor. Before you are able to do anything on the cluster, you need to be able to *talk* to this cluster from/using your computer. **kubectl** - short for Kubernetes Controller (or Kube Control) - is *the* command line tool to talk to a Kubernetes cluster. 
 
@@ -102,7 +102,32 @@ $ kubectl get pods
 No resources found in default namespace.
 ```
 
-### Configure kubectl to connect to your cluster - using `config` file provided by instructor:
+
+## Kind cluster:
+
+`kind` also sets correct kubectl context for you automatically.
+
+You can also install kind, which stands for "Kubernetes in Docker."
+
+Reference: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+
+* Mac: `brew install kind`
+* Linux AMD64: `[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64`
+* Linux ARM64: `[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-arm64`
+
+```
+chmod +x ./kind
+sudo mv ./kind /usr/local/bin/kind
+```
+
+Create kind cluster:
+
+```
+kind create cluster --name k8s-training
+```
+
+
+## Configure kubectl to connect to your cluster - using `config` file provided by instructor:
 
 In case you are provided by a `config` file, simply create a `.kube` directory under your home directory, place it inside it. i.e. `/home/<username>/.kube/`. This file contains all information to correctly authenticate and connect to the cluster assigned to you.  Make sure to backup any existing `.kube/config` before you do this. 
 
