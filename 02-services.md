@@ -1,4 +1,4 @@
-# Service Discovery and Loadbalancing
+# Services - Service Discovery and Load balancing
 In almost every Kubernetes cluster, there is an addon called CoreDNS (previously KubeDNS), which provides service discovery within the cluster, using DNS mechanism. Every time a *service* is created in kubernetes cluster, it is registered in CoreDNS with the name of the service, it's ClusterIP. e.g. `nginx.default.svc.cluster.local` . There will be more on this later. Each service will have a name, a clusterIP, and also the list of backends linked with this service. 
 
 The kubernetes *service* also acts as an internal load balancer, when the service has more than one endpoints. e.g. A nginx deployment can have four replicas. When exposed as a service, the service will have four endpoints, which are the IP addresses of the pods. When this service is accessed by a client (a pod or any other process), the service does load balancing between these endpoints. A service and it's endpoints are shown below:
