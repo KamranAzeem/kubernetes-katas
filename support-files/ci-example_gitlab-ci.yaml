@@ -1,0 +1,45 @@
+# Example Gitlab CI file to build docker image and deploy application.
+
+stages:
+  - build
+  - deploy
+
+variables:
+  GCP_PROJECT_ID: wbitt
+  GCP_CLUSTER_NAME: wbitt-production
+  NAMESPACE: prod
+  SITE_NAME: wbitt.com
+  SITE_ID: wbitt-com
+
+build-docker-image:
+  only:
+    - main
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - |
+    - cat ${DOCKER_CREDENTIALS} | docker login -u _json_key --password-stdin
+    - |
+      docker build \
+        -t wbitt/frontend:${CI_COMMIT_SHORT_SHA} \
+        -t wbitt/frontend:latest .
+    - docker push wbitt/frontend:${CI_COMMIT_SHORT_SHA}
+    - docker push wbitt/frontend:latest
+
+deploy-app-in-k8s:
+  only:
+    - main
+  stage: deploy
+  image: wbitt/gcp-tools
+  script:
+    - cat ${KUBECONFIG} > ${HOME}/.kube/config
+    - IMAGE_TAG=${CI_COMMIT_SHORT_SHA}
+    - sed -e s/IMAGE_TAG/${CI_COMMIT_SHORT_SHA}/ \
+          -e s/SITE_NAME/${SITE_NAME}/ \
+          -e s/SITE_ID/${SITE_ID}/ \
+          dep-svc-ing.template.yaml > dep-svc-ing.yaml
+    - kubectl --namespace=${NAMESPACE} delete -f dep-svc-ing.yaml || true
+    - sleep 3
+    - kubectl --namespace=${NAMESPACE} apply -f dep-svc-ing.yaml

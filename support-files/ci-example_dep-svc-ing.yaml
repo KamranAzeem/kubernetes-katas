@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: SITE_ID
+  labels:
+    app: SITE_ID
+spec:
+  selector:
+    matchLabels:
+      app: SITE_ID
+  template:
+    metadata:
+      labels:
+        app: SITE_ID
+    spec:
+      containers:
+      - name: frontend
+        image: wbitt/frontend:IMAGE_TAG
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: web
+        env:
+
+        - name: TZ
+          value: "Europe/Oslo"
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: SITE_ID
+  labels:
+    app: SITE_ID
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: SITE_ID
+  type: ClusterIP
+
+---
+
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: SITE_ID-https
+  annotations:
+    cert-manager.io/issuer: "letsencrypt-production"
+    kubernetes.io/ingressClassName: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - SITE_NAME
+    secretName: SITE_ID-ssl-crt
+  rules:
+    - host: SITE_NAME
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: SITE_ID
+                port:
+                  number: 80
