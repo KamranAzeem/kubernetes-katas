@@ -1,4 +1,4 @@
-Check the following "example" support files.
+Check the following basic CI/CD examples:
+* [GitLab: ](https://gitlab.com/wbitt/examples/basic-cd)
+* [GitHub: ](https://github.com/wbitt/basic-cd)   
 
-* ci-example_gitlab-ci.yaml
-* ci-example_dep-svc-ing.yaml
