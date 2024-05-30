@@ -1,0 +1,102 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-ingress-and-egress-rules
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      app: whoami
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          # Allow ingress incoming connection to this (whoami) pod,
+          #   from other pod in the same namespace (dev),
+          #   where the other pod(s) have the following label.
+          app: multitool
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          # This rule allows traffic coming in from the pods 
+          #   in the kube-system namespace, such as Traefik.
+          # Without this, traffic from outside the cluster will not 
+          #   reach the whoami pod.
+          kubernetes.io/metadata.name: kube-system
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          # This rule allows traffic coming in from the monitoring namespace.
+          kubernetes.io/metadata.name: monitoring
+
+  egress:
+     
+  # Outgoing traffic to internet, allows only outgoing 80 and 443.
+  #   Block access to metadata endpoint 169.254.169.254 .
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        # Block access to metadata endpoint 169.254.169.254/32
+        - 169.254.169.254/32
+        #
+        # * You should also block 80/443 access to all of the cluster (pod) IPs,
+        #     in the "except" list. This helps stop any user pods
+        #     accessing any other 80/443 services within the k8s cluster.
+        # * To find the address of pod network, use the following command:
+        #     `kubectl cluster-info dump | grep -m 1 cluster-cidr`
+        #
+        # * On regular CNI and kubenet based clusters,
+        #     use the cluster-cidr here, which is the pod network.
+        #     , e.g:
+        #- 10.200.0.0/16
+        #
+        # *  On Azure CNI, the nodes are from the same IP block
+        #      as the pods, so blocking access to cluster CIDR
+        #      will end up denying access to everything on 80/443.
+        #      So, use this wisely.
+        # - 10.240.0.0/16
+    # The "ports" part below will be joined using "AND" 
+    #    with the "to:" part above, making it one rule.
+    ports:
+    - protocol: "TCP"
+      port: 80
+    - protocol: "TCP"
+      port: 443
+
+  # The separate "to:" rule below will be "OR" to the full "to:" rule/section above.
+  # * Allow DNS traffic to flow to k8s internal DNS (kube-dns)
+  # * Don't use DNS service/cluster IP here. It won't work.
+  # * All pods get the nameserver entry in their /etc/resolv.conf
+  #     file to use kube-dns on a service IP, usually 10.32.0.10.
+  # * Therefore the DNS traffic "will" try to go towards kube-dns
+  #     , which is running inside the kube-system namespace.
+  #
+  # * In short, the following rule ensures that DNS traffic reaches
+  #     kube-dns in the kube-system namespace.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: "TCP"
+    - port: 53
+      protocol: "UDP"
+
+  # The following allows DB connections to be made to the databases
+  #   running in the prod namespace.
+  # It doesn't support DNS name as yet.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: prod
+    ports:
+    - protocol: "TCP"
+      port: 5432
+    - protocol: "TCP"
+      port: 3306
