@@ -2,7 +2,7 @@
 
 There are several ways for making data peristent. Few of them will be explained in this kata.
 
-## emtpryDir
+## emptyDir
 An “emptyDir” volume type is always empty at the pod start time and gets data from whatever the container process(es) - or other containers in the same pod - fill it with. As soon as the pod exits - or dies - the emptyDir volume is deleted with it. If the pod moves from one node to another, the contents of emptyDir are deleted permanently. So this is not really an example of data persistence. But it helps explain certain point.
 
 Some uses for an emptyDir are:
