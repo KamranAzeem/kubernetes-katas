@@ -8,6 +8,8 @@ spec:
     image: nginx:alpine
     resources:
       requests:
-        cpu: "1m"
+        cpu: "5m"
+        memory: "8Mi"
       limits:
-        cpu: "10m"
+        cpu: "20m"
+        memory: "16Mi"

@@ -44,6 +44,232 @@ spec:
     emptyDir: {}
 ```
 
+The `emptyDir.medium` field is used to specify where `emptyDir` volumes are stored. By default `emptyDir`  volumes are stored on medium available on the node, such as disk, SSD, or network storage, etc. i.e. By default the `emptyDir` volume is **not** created in memory (tmpfs).
+
+You can specify a size limit for the default medium, which limits the capacity of the `emptyDir` volume. This piece of storage is allocated from node's ephemeral storage. Note that this works on supported storage types only.
+
+If you set the `emptyDir.medium` field to **"Memory"**, Kubernetes mounts a `tmpfs` (RAM-backed filesystem) for you. Being memory based, tmpfs is very fast, but the space used by the files in the tmpfs volume is deducted from the memory limit of the container. This is something to watch out for!
+
+
+Create a pod with basic (and shared) `emptyDir` volume:
+
+```
+$ kubectl -n dev apply -f init-container-pod.yaml 
+
+pod/init-container-demo created
+```
+
+Check how much space is allocated to the `emptyDir` volume:
+
+```
+$ kubectl -n dev exec  init-container-demo -- df -hT | grep '/usr/share/nginx/html'
+
+Defaulted container "nginx" out of: nginx, helper (init)
+
+/dev/sda4            ext4           48.9G     22.8G     23.6G  49% /usr/share/nginx/html 
+```
+
+Notice the type of volume shows up as `ext4`. The `/dev/sda4` is from the `k3s` `local-path` storage class. This is the path where this particular `k3s` node has the root ( `/` ) partition mounted, which in-turn contains `/tmp/` directory under it's tree.
+
+
+Now change the `emptyDir` section to include a `sizeLimit`. Note that the storageclass of this particular cluster (k3s) - is of type `local-path`.
+
+```
+$ cat support-files/init-container-pod-emptyDir-size-limited.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-container-demo-emptyDir-size-limited
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: web-content-dir
+      mountPath: /usr/share/nginx/html
+  initContainers:
+  - name: helper
+    image: alpine/git
+    command:
+    - git 
+    - clone
+    - https://github.com/Praqma/simple-website.git
+    - /web-content/
+    volumeMounts:
+    - name: web-content-dir
+      mountPath: "/web-content"
+  volumes:
+  - name: web-content-dir
+    emptyDir:
+      sizeLimit: 128Mi
+```
+
+Create the new pod:
+
+```
+$ kubectl -n dev apply -f init-container-pod-emptydir-size-limited.yaml 
+
+pod/init-container-demo-emptydir-size-limited created
+```
+
+Verify:
+
+```
+$ kubectl -n dev exec init-container-demo-emptydir-size-limited  -- df -hT | grep '/usr/share/nginx/html'
+
+Defaulted container "nginx" out of: nginx, helper (init)
+
+/dev/sda4            ext4           48.9G     22.8G     23.6G  49% /usr/share/nginx/html
+```
+
+Notice the type of volume shows up as `ext4`.
+
+
+The size of `emtpryDir` volume does not seem to have changed from before. However, if you try to fill up the disk space in this container in `/usr/share/nginx/html` , then the pod dies in some time.
+
+```
+$ kubectl -n dev exec -it init-container-demo-emptydir-size-limited  -- /bin/sh
+
+Defaulted container "nginx" out of: nginx, helper (init)
+
+/ # dd if=/dev/zero of=/usr/share/nginx/html/zeros.dd bs=1M count=128
+128+0 records in
+128+0 records out
+134217728 bytes (128.0MB) copied, 0.098639 seconds, 1.3GB/s
+
+/ # ls -lh /usr/share/nginx/html/
+total 128M   
+-rw-r--r--    1 root     root         479 Jun 11 10:27 README.md
+-rw-r--r--    1 root     root         187 Jun 11 10:27 index.html
+-rw-r--r--    1 root     root          62 Jun 11 10:27 index.php
+-rw-r--r--    1 root     root      128.0M Jun 11 10:33 zeros.dd
+/ # 
+```
+
+```
+$ kubectl -n dev get pods 
+NAME                                        READY   STATUS                   RESTARTS      AGE
+init-container-demo-emptydir-size-limited   0/1     ContainerStatusUnknown   1             8m19s
+```
+
+
+```
+$ kubectl -n dev get events
+
+7m28s       Warning   Evicted     pod/init-container-demo-emptydir-size-limited   Usage of EmptyDir volume "web-content-dir" exceeds the limit "128Mi".
+```
+
+### emptyDir of type "Memory" (tmpfs):
+
+Create a new pod with `emptyDir` set to use "Memory" as it's medium.
+
+```
+$ kubectl -n dev apply -f init-container-pod-emptydir-tmpfs.yaml 
+
+pod/init-container-demo-emptydir-tmpfs created
+```
+
+```
+$ kubectl -n dev get pods
+NAME                                 READY   STATUS    RESTARTS      AGE
+init-container-demo-emptydir-tmpfs   1/1     Running   0             30s
+```
+
+Verify: 
+
+```
+$ kubectl -n dev exec  init-container-demo-emptydir-tmpfs  -- df -hT | grep html
+
+Defaulted container "nginx" out of: nginx, helper (init)
+
+tmpfs                tmpfs         128.0M    132.0K    127.9M   0% /usr/share/nginx/html
+```
+
+Notice the type of volume shows up as `tmpfs`.
+
+
+As mentioned before, emptyDir of type Memory will use (deduct) the memory from whatever is requested and allocated to the pod. So, if your pod has low memory assigned to it, and your tmpfs volume is large - or the size of files in the tmpfs volume outgrows the memory of the pod, the pod will die. 
+
+In the example below, the pod is configured to limit memory use to only `64Mi`, but the tmpfs volume is set to a size of `128Mi`. This is larger that the pod's memory. As soon as you create files larger than the available memory, the pod will crash.
+
+
+```
+kind: Pod
+metadata:
+  name: init-container-demo-emptydir-tmpfs
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        cpu: "10m"
+        memory: "32Mi"
+      limits:
+        cpu: "50m"
+        memory: "64Mi"
+      
+    volumeMounts:
+    - name: web-content-dir
+      mountPath: /usr/share/nginx/html
+
+  initContainers:
+  - name: helper
+    image: alpine/git
+    command:
+    - git 
+    - clone
+    - https://github.com/Praqma/simple-website.git
+    - /web-content/
+    volumeMounts:
+    - name: web-content-dir
+      mountPath: "/web-content"
+  volumes:
+  - name: web-content-dir
+    emptyDir:
+      medium: "Memory"
+      sizeLimit: 128Mi
+```
+
+```
+$ kubectl -n dev apply -f init-container-pod-emptydir-tmpfs.yaml 
+
+pod/init-container-demo-emptydir-tmpfs created
+```
+
+```
+$ kubectl -n dev get pods
+NAME                                 READY   STATUS    RESTARTS      AGE
+
+init-container-demo-emptydir-tmpfs   1/1     Running   0             53s
+```
+
+Verify the memory / tmpfs behavior when we try to fill it with files larger that the pod's memory. 
+
+```
+$ kubectl -n dev exec  -it init-container-demo-emptydir-tmpfs  -- /bin/sh
+
+Defaulted container "nginx" out of: nginx, helper (init)
+
+/ # dd if=/dev/zero of=/usr/share/nginx/html/zeros.dd bs=1M count=128
+
+command terminated with exit code 137
+```
+
+The pod is killed because of memory abuse.
+
+```
+$ kubectl -n dev get pods
+NAME                                 READY   STATUS      RESTARTS      AGE
+whoami-79684c5dcc-4mphl              1/1     Running     1 (22d ago)   22d
+init-container-demo-emptydir-tmpfs   0/1     OOMKilled   1             3m38s
+```
+
 
 ## hostPath
 A `hostPath` volume type will always mount a directory from the host file system into a mount point inside the pod. Whatever the contents of the said host directory, will show up in the mount point in the container. On a Kubernetes cluster, hostPath volume will prove to be a nightmare for its use as a general persistent-storage for running containers, because what if the container moves from one node to another? How will the volume move from one node to another? It won’t - and that is not the use-case for this type of volume. 
